@@ -13,5 +13,6 @@ code {
 }
 
 .leaflet-bottom.leaflet-right {
-  bottom: 60px !important; 
+  bottom: 60px !important;
+  margin-bottom: 60px;
 }
