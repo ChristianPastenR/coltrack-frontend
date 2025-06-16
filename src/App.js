@@ -107,19 +107,20 @@ function App() {
 
       {/* Banner inferior */}
       <div style={{
-        position: "absolute",
+        position: "fixed", // en lugar de "absolute"
         bottom: 0,
         width: "100%",
         textAlign: "center",
         backgroundColor: "rgba(0, 0, 0, 0.7)",
         color: "white",
-        padding: "0px 0",
+        padding: "12px 0", // más altura para evitar que se lo coma el nav bar
         fontSize: "16px",
         fontWeight: "bold",
         zIndex: 1000
       }}>
         <span>Coltrack® 2025</span>
       </div>
+
     </div>
   );
 }
