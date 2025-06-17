@@ -1,4 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
+import AnimatedMarker from "./components/AnimatedMarker";
+
 import {
   MapContainer,
   TileLayer,
@@ -25,54 +27,6 @@ const colorPalette = [
   "#DCEDC8", "#F0F4C3", "#FFECB3", "#FFE0B2", "#FFCCBC"
 ];
 
-const colorMap = {};
-
-const getLineColor = (linea) => {
-  if (!colorMap[linea]) {
-    const hash = [...linea].reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    colorMap[linea] = colorPalette[hash % colorPalette.length];
-  }
-  return colorMap[linea];
-};
-
-
-const getLineIcon = (linea, expandido, pasajeros, zoom) => {
-  const bgColor = getLineColor(linea);
-  const scale = Math.max(0.5, Math.min(1.6, zoom / 16));
-  const vehicleSize = 48 * scale;
-  const fontSize = 10 * scale;
-  const padding = 2 * scale;
-  const borderRadius = 6 * scale;
-
-  return new L.DivIcon({
-    html: `
-      <div style="position:relative;text-align:center;cursor:pointer;transform:translateY(-10px);">
-        <img src="/img/taxi.png" style="width:${vehicleSize}px;height:${vehicleSize}px;transition:width .2s,height .2s;" />
-        <div style="
-          position:absolute;
-          bottom:${vehicleSize}px;
-          left:50%;
-          transform:translateX(-50%);
-          background:${bgColor};
-          color:black;
-          border-radius:${borderRadius}px;
-          padding:${padding}px ${padding * 3}px;
-          font-family:sans-serif;
-          font-size:${fontSize}px;
-          line-height:1.2;
-          white-space:nowrap;
-        ">
-          ${linea}
-          ${expandido ? `<div style="margin-top:${padding}px;">Pasajeros: ${pasajeros}</div>` : ""}
-        </div>
-      </div>
-    `,
-    className: "",
-    iconSize: [60 * scale, 90 * scale],
-    iconAnchor: [30 * scale, 48 * scale]
-  });
-};
-
 const copiapoCenter = [-27.377665428621032, -70.31697510051582];
 const copiapoBounds = [
   [-27.50, -70.50],
@@ -95,6 +49,61 @@ export default function App() {
   const [zoom, setZoom] = useState(16);
   const [availableLines, setAvailableLines] = useState([]);
   const [selectedLines, setSelectedLines] = useState([]);
+
+  const colorMapRef = useRef({});
+  const usedColorsRef = useRef(new Set());
+
+  const getLineColor = (linea) => {
+    const map = colorMapRef.current;
+    const used = usedColorsRef.current;
+
+    if (!map[linea]) {
+      const availableColors = colorPalette.filter(c => !used.has(c));
+      const color = availableColors.length > 0
+        ? availableColors[Math.floor(Math.random() * availableColors.length)]
+        : colorPalette[Math.floor(Math.random() * colorPalette.length)];
+
+      map[linea] = color;
+      used.add(color);
+    }
+
+    return map[linea];
+  };
+
+  const getLineIcon = (linea, expandido, pasajeros, zoom) => {
+    const scale = Math.max(0.6, Math.min(1.4, zoom / 16));
+    const size = 48 * scale;
+    const fontSize = 11 * scale;
+    const color = getLineColor(linea);
+    const textColor = "black";
+
+    return new L.DivIcon({
+      html: `
+        <div style="text-align:center; position: relative; transform: translateY(-10px);">
+          <div style="
+            position: absolute;
+            bottom: ${size + 2}px;
+            left: 50%;
+            transform: translateX(-50%);
+            min-height: ${fontSize + 6}px;
+            font-size: ${fontSize}px;
+            padding: 2px 6px;
+            background: ${color};
+            color: ${textColor};
+            border-radius: 6px;
+            font-family: sans-serif;
+            white-space: nowrap;
+          ">
+            ${linea}${expandido ? `<br/>Pasajeros: ${pasajeros}` : ""}
+          </div>
+          <img src="/img/taxi.png" style="width: ${size}px; height: ${size}px;" />
+        </div>
+      `,
+      className: "",
+      iconSize: [size + 20, size + 30],
+      iconAnchor: [size / 2, size]
+    });
+  };
 
   useEffect(() => {
     const fetchTelemetrias = async () => {
@@ -124,7 +133,7 @@ export default function App() {
     };
 
     fetchTelemetrias();
-    const id = setInterval(fetchTelemetrias, 5000);
+    const id = setInterval(fetchTelemetrias, 500);
     return () => clearInterval(id);
   }, [selectedLines]);
 
@@ -137,8 +146,11 @@ export default function App() {
     return () => clearTimeout(timer);
   }, []);
 
-  const toggleExpansion = id =>
-    setExpandedMarkers(prev => ({ ...prev, [id]: !prev[id] }));
+  const toggleExpansion = (id) =>
+    setExpandedMarkers((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }));
 
   const dataFiltrada = telemetrias.filter(t => selectedLines.includes(t.linea));
 
@@ -175,11 +187,12 @@ export default function App() {
         {userLocation && <MoveToLocation position={userLocation} />}
         {userLocation && <Marker position={userLocation} icon={userIcon} />}
         {dataFiltrada.map(t => (
-          <Marker
-            key={`${t._id}-${zoom}`}
+          <AnimatedMarker
+            key={t._id}
+            id={t._id}
             position={[t.gps.lat, t.gps.lng]}
             icon={getLineIcon(t.linea, expandedMarkers[t._id], t.pasajeros, zoom)}
-            eventHandlers={{ click: () => toggleExpansion(t._id) }}
+            onClick={() => toggleExpansion(t._id)}
           />
         ))}
       </MapContainer>
