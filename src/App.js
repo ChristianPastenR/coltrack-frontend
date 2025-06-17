@@ -133,7 +133,7 @@ export default function App() {
     };
 
     fetchTelemetrias();
-    const id = setInterval(fetchTelemetrias, 500);
+    const id = setInterval(fetchTelemetrias, 1500);
     return () => clearInterval(id);
   }, [selectedLines]);
 
