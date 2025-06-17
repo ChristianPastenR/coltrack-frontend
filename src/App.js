@@ -13,7 +13,7 @@ import LoaderOverlay from "./components/loadingOverlay";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 
-const API_URL = "http://127.0.0.1:3000/api/telemetria/recientes";
+const API_URL = "http://159.112.135.140:3001/api/telemetria/recientes";
 
 const userIcon = new L.Icon({
   iconUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png",
@@ -107,30 +107,36 @@ export default function App() {
 
   useEffect(() => {
     const fetchTelemetrias = async () => {
-      try {
-        const res = await fetch(API_URL);
-        const json = await res.json();
-        const nuevos = json.data || [];
+  try {
+    const res = await fetch(API_URL);
+    const json = await res.json();
+    const nuevos = json.data || [];
 
-        setExpandedMarkers(prev => {
-          const updated = { ...prev };
-          nuevos.forEach(t => {
-            if (updated[t._id] === undefined) updated[t._id] = false;
-          });
-          return updated;
-        });
+    // AGRUPAR por patente, quedarse con el último
+    const porPatente = new Map();
+    for (const t of nuevos) {
+      porPatente.set(t.patente, t); // ← ID estable
+    }
+    const deduplicados = Array.from(porPatente.values());
 
-        setTelemetrias(nuevos);
-        const lines = Array.from(new Set(nuevos.map(t => t.linea))).sort();
-        setAvailableLines(lines);
+    // Asegurar expansión por patente
+    setExpandedMarkers(prev => {
+      const updated = { ...prev };
+      deduplicados.forEach(t => {
+        if (updated[t.patente] === undefined) updated[t.patente] = false;
+      });
+      return updated;
+    });
 
-        if (selectedLines.length === 0) {
-          setSelectedLines(lines);
-        }
-      } catch (err) {
-        console.error("Error obteniendo telemetrías:", err.message);
-      }
+    setTelemetrias(deduplicados);
+    const lines = Array.from(new Set(deduplicados.map(t => t.linea))).sort();
+    setAvailableLines(lines);
+    if (selectedLines.length === 0) setSelectedLines(lines);
+  } catch (err) {
+    console.error("Error obteniendo telemetrías:", err.message);
+  }
     };
+
 
     fetchTelemetrias();
     const id = setInterval(fetchTelemetrias, 1500);
@@ -187,14 +193,15 @@ export default function App() {
         {userLocation && <MoveToLocation position={userLocation} />}
         {userLocation && <Marker position={userLocation} icon={userIcon} />}
         {dataFiltrada.map(t => (
-          <AnimatedMarker
-            key={t._id}
-            id={t._id}
-            position={[t.gps.lat, t.gps.lng]}
-            icon={getLineIcon(t.linea, expandedMarkers[t._id], t.pasajeros, zoom)}
-            onClick={() => toggleExpansion(t._id)}
-          />
-        ))}
+        <AnimatedMarker
+          key={t.patente} // ← ID estable
+          id={t.patente}
+          position={[t.gps.lat, t.gps.lng]}
+          icon={getLineIcon(t.linea, expandedMarkers[t.patente], t.pasajeros, zoom)}
+          onClick={() => toggleExpansion(t.patente)}
+        />
+      ))}
+
       </MapContainer>
 
       <div style={{
