@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
 
-export default function SearchBarDropdown({ lines = [], onSelectionChange }) {
+export default function SearchBarDropdown({
+  lines = [],
+  onSelectionChange,
+  lineColors = {}
+}) {
   const [selected, setSelected] = useState([]);
   const [filter, setFilter] = useState("");
   const [isOpen, setIsOpen] = useState(false);
@@ -9,7 +13,7 @@ export default function SearchBarDropdown({ lines = [], onSelectionChange }) {
   const [dropdownWidth, setDropdownWidth] = useState("100%");
   const initializedRef = useRef(false);
 
-  // Solo inicializa una vez
+  // Inicializa todas las líneas como seleccionadas solo una vez
   useEffect(() => {
     if (!initializedRef.current && lines.length > 0) {
       const allIds = lines.map(l => l.id);
@@ -18,7 +22,7 @@ export default function SearchBarDropdown({ lines = [], onSelectionChange }) {
     }
   }, [lines]);
 
-  // Comunicar cambios al padre
+  // Comunica los cambios al componente padre
   useEffect(() => {
     onSelectionChange?.(selected);
   }, [selected]);
@@ -31,7 +35,7 @@ export default function SearchBarDropdown({ lines = [], onSelectionChange }) {
     }
   }, [isOpen]);
 
-  // Cerrar si se hace clic fuera
+  // Cierra el dropdown si se hace clic fuera
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (
@@ -47,14 +51,12 @@ export default function SearchBarDropdown({ lines = [], onSelectionChange }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Alternar una línea
   const toggleLine = (id) => {
     setSelected(prev =>
       prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
     );
   };
 
-  // Alternar todas
   const handleToggleAll = () => {
     const allIds = lines.map(l => l.id);
     setSelected(selected.length === allIds.length ? [] : allIds);
@@ -146,7 +148,9 @@ export default function SearchBarDropdown({ lines = [], onSelectionChange }) {
                 style={{
                   padding: 8,
                   display: "flex",
-                  alignItems: "center"
+                  alignItems: "center",
+                  backgroundColor: lineColors[line.id] || "#fff",
+                  borderBottom: "1px solid #ddd"
                 }}
               >
                 <input
@@ -155,7 +159,12 @@ export default function SearchBarDropdown({ lines = [], onSelectionChange }) {
                   onChange={() => toggleLine(line.id)}
                 />
                 <label
-                  style={{ marginLeft: 8, cursor: "pointer" }}
+                  style={{
+                    marginLeft: 8,
+                    cursor: "pointer",
+                    fontWeight: "bold",
+                    color: "#000"
+                  }}
                   onClick={() => toggleLine(line.id)}
                 >
                   {line.id}

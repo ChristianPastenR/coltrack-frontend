@@ -1,6 +1,4 @@
 import React, { useEffect, useState, useRef } from "react";
-import AnimatedMarker from "./components/AnimatedMarker";
-
 import {
   MapContainer,
   TileLayer,
@@ -8,12 +6,20 @@ import {
   Marker,
   useMap
 } from "react-leaflet";
+import L from "leaflet";
+
+import AnimatedMarker from "./components/AnimatedMarker";
 import SearchBarDropdown from "./components/SearchBarDropdown";
 import LoaderOverlay from "./components/loadingOverlay";
 import "leaflet/dist/leaflet.css";
-import L from "leaflet";
+
 
 const API_URL = "http://159.112.135.140:3001/api/telemetria/recientes";
+const copiapoCenter = [-27.377665428621032, -70.31697510051582];
+const copiapoBounds = [
+  [-27.50, -70.50],
+  [-27.10, -70.20]
+];
 
 const userIcon = new L.Icon({
   iconUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png",
@@ -21,35 +27,46 @@ const userIcon = new L.Icon({
   iconAnchor: [12, 41]
 });
 
-const colorPalette = [
-  "#FFCDD2", "#F8BBD0", "#E1BEE7", "#D1C4E9", "#C5CAE9",
-  "#BBDEFB", "#B3E5FC", "#B2EBF2", "#B2DFDB", "#C8E6C9",
-  "#DCEDC8", "#F0F4C3", "#FFECB3", "#FFE0B2", "#FFCCBC"
-];
-
-const copiapoCenter = [-27.377665428621032, -70.31697510051582];
-const copiapoBounds = [
-  [-27.50, -70.50],
-  [-27.10, -70.20]
-];
 
 function MoveToLocation({ position }) {
   const map = useMap();
+  const lastCenter = useRef(null);
+
   useEffect(() => {
-    position && map.flyTo(position, 16);
+    if (!position) return;
+
+    const currentCenter = map.getCenter();
+    const distance = map.distance(currentCenter, L.latLng(position));
+
+    if (lastCenter.current === null) {
+      map.flyTo(position, 18, { duration: 1 });
+      lastCenter.current = position;
+    } else if (distance > 80) {
+      map.panTo(position, { animate: true, duration: 0.5 });
+      lastCenter.current = position;
+    }
+
   }, [position, map]);
+
   return null;
 }
 
+
 export default function App() {
   const [loading, setLoading] = useState(true);
-  const [userLocation, setUserLocation] = useState(null);
   const [telemetrias, setTelemetrias] = useState([]);
-  const [expandedMarkers, setExpandedMarkers] = useState({});
+  const [userLocation, setUserLocation] = useState(null);
   const [zoom, setZoom] = useState(16);
   const [availableLines, setAvailableLines] = useState([]);
   const [selectedLines, setSelectedLines] = useState([]);
+  const [expandedMarkers, setExpandedMarkers] = useState({});
+  const [focusedVehicle, setFocusedVehicle] = useState(null);
 
+  const colorPalette = [
+    "#FFCDD2", "#F8BBD0", "#E1BEE7", "#D1C4E9", "#C5CAE9",
+    "#BBDEFB", "#B3E5FC", "#B2EBF2", "#B2DFDB", "#C8E6C9",
+    "#DCEDC8", "#F0F4C3", "#FFECB3", "#FFE0B2", "#FFCCBC"
+  ];
   const colorMapRef = useRef({});
   const usedColorsRef = useRef(new Set());
 
@@ -70,73 +87,35 @@ export default function App() {
     return map[linea];
   };
 
-  const getLineIcon = (linea, expandido, pasajeros, zoom) => {
-    const scale = Math.max(0.6, Math.min(1.4, zoom / 16));
-    const size = 48 * scale;
-    const fontSize = 11 * scale;
-    const color = getLineColor(linea);
-    const textColor = "black";
-
-    return new L.DivIcon({
-      html: `
-        <div style="text-align:center; position: relative; transform: translateY(-10px);">
-          <div style="
-            position: absolute;
-            bottom: ${size + 2}px;
-            left: 50%;
-            transform: translateX(-50%);
-            min-height: ${fontSize + 6}px;
-            font-size: ${fontSize}px;
-            padding: 2px 6px;
-            background: ${color};
-            color: ${textColor};
-            border-radius: 6px;
-            font-family: sans-serif;
-            white-space: nowrap;
-          ">
-            ${linea}${expandido ? `<br/>Pasajeros: ${pasajeros}` : ""}
-          </div>
-          <img src="/img/taxi.png" style="width: ${size}px; height: ${size}px;" />
-        </div>
-      `,
-      className: "",
-      iconSize: [size + 20, size + 30],
-      iconAnchor: [size / 2, size]
-    });
-  };
-
   useEffect(() => {
     const fetchTelemetrias = async () => {
-  try {
-    const res = await fetch(API_URL);
-    const json = await res.json();
-    const nuevos = json.data || [];
+      try {
+        const res = await fetch(API_URL);
+        const json = await res.json();
+        const nuevos = json.data || [];
 
-    // AGRUPAR por patente, quedarse con el último
-    const porPatente = new Map();
-    for (const t of nuevos) {
-      porPatente.set(t.patente, t); // ← ID estable
-    }
-    const deduplicados = Array.from(porPatente.values());
+        const porPatente = new Map();
+        for (const t of nuevos) {
+          porPatente.set(t.patente, t);
+        }
+        const deduplicados = Array.from(porPatente.values());
 
-    // Asegurar expansión por patente
-    setExpandedMarkers(prev => {
-      const updated = { ...prev };
-      deduplicados.forEach(t => {
-        if (updated[t.patente] === undefined) updated[t.patente] = false;
-      });
-      return updated;
-    });
+        setExpandedMarkers(prev => {
+          const updated = { ...prev };
+          deduplicados.forEach(t => {
+            if (updated[t.patente] === undefined) updated[t.patente] = false;
+          });
+          return updated;
+        });
 
-    setTelemetrias(deduplicados);
-    const lines = Array.from(new Set(deduplicados.map(t => t.linea))).sort();
-    setAvailableLines(lines);
-    if (selectedLines.length === 0) setSelectedLines(lines);
-  } catch (err) {
-    console.error("Error obteniendo telemetrías:", err.message);
-  }
+        setTelemetrias(deduplicados);
+        const lines = Array.from(new Set(deduplicados.map(t => t.linea))).sort();
+        setAvailableLines(lines);
+        if (selectedLines.length === 0) setSelectedLines(lines);
+      } catch (err) {
+        console.error("Error obteniendo telemetrías:", err.message);
+      }
     };
-
 
     fetchTelemetrias();
     const id = setInterval(fetchTelemetrias, 1500);
@@ -152,11 +131,13 @@ export default function App() {
     return () => clearTimeout(timer);
   }, []);
 
-  const toggleExpansion = (id) =>
+  const toggleExpansion = (id) => {
     setExpandedMarkers((prev) => ({
       ...prev,
       [id]: !prev[id],
     }));
+    setFocusedVehicle(id);
+  };
 
   const dataFiltrada = telemetrias.filter(t => selectedLines.includes(t.linea));
 
@@ -166,9 +147,13 @@ export default function App() {
 
       <div style={{ position: "absolute", top: 10, left: 10, zIndex: 1000, width: "90vw", maxWidth: 500 }}>
         <SearchBarDropdown
-          lines={availableLines.map(id => ({ name: id, id }))}
+          lines={availableLines.map(id => ({ id }))}
           selectedLines={selectedLines}
           onSelectionChange={setSelectedLines}
+          lineColors={availableLines.reduce((acc, id) => {
+            acc[id] = getLineColor(id);
+            return acc;
+          }, {})}
         />
       </div>
 
@@ -190,18 +175,26 @@ export default function App() {
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
         <ZoomControl position="bottomright" />
-        {userLocation && <MoveToLocation position={userLocation} />}
         {userLocation && <Marker position={userLocation} icon={userIcon} />}
+        {focusedVehicle && (
+          <MoveToLocation
+            position={
+              telemetrias.find(t => t.patente === focusedVehicle)?.gps || null
+            }
+          />
+        )}
         {dataFiltrada.map(t => (
-        <AnimatedMarker
-          key={t.patente} // ← ID estable
-          id={t.patente}
-          position={[t.gps.lat, t.gps.lng]}
-          icon={getLineIcon(t.linea, expandedMarkers[t.patente], t.pasajeros, zoom)}
-          onClick={() => toggleExpansion(t.patente)}
-        />
-      ))}
-
+          <AnimatedMarker
+            key={t.patente}
+            id={t.patente}
+            position={[t.gps.lat, t.gps.lng]}
+            linea={t.linea}
+            color={getLineColor(t.linea)}
+            pasajeros={t.pasajeros}
+            zoom={zoom}
+            onClick={() => toggleExpansion(t.patente)}
+          />
+        ))}
       </MapContainer>
 
       <div style={{
