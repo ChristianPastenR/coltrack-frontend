@@ -4,7 +4,8 @@ import {
   TileLayer,
   ZoomControl,
   Marker,
-  useMap
+  useMap,
+  useMapEvents
 } from "react-leaflet";
 import L from "leaflet";
 
@@ -13,12 +14,11 @@ import SearchBarDropdown from "./components/SearchBarDropdown";
 import LoaderOverlay from "./components/loadingOverlay";
 import "leaflet/dist/leaflet.css";
 
-
 const API_URL = "http://159.112.135.140:3001/api/telemetria/recientes";
 const copiapoCenter = [-27.377665428621032, -70.31697510051582];
 const copiapoBounds = [
-  [-27.50, -70.50],
-  [-27.10, -70.20]
+  [-27.476759948156687, -70.3671334115435],
+  [-27.340521822497408, -70.24654130397786]
 ];
 
 const userIcon = new L.Icon({
@@ -27,6 +27,7 @@ const userIcon = new L.Icon({
   iconAnchor: [12, 41]
 });
 
+/* ---------- Helpers de Leaflet ---------- */
 
 function MoveToLocation({ position }) {
   const map = useMap();
@@ -34,23 +35,30 @@ function MoveToLocation({ position }) {
 
   useEffect(() => {
     if (!position) return;
-
     const currentCenter = map.getCenter();
     const distance = map.distance(currentCenter, L.latLng(position));
 
-    if (lastCenter.current === null) {
-      map.flyTo(position, 18, { duration: 1 });
-      lastCenter.current = position;
-    } else if (distance > 80) {
+    if (lastCenter.current === null || distance > 80) {
+      map.flyTo(position, 17, { duration: 0.5 });
+    } else {
       map.panTo(position, { animate: true, duration: 0.5 });
-      lastCenter.current = position;
     }
-
+    lastCenter.current = position;
   }, [position, map]);
 
   return null;
 }
 
+function ZoomLogger({ onZoomChange }) {
+  useMapEvents({
+    zoomend(e) {
+      onZoomChange?.(e.target.getZoom());
+    }
+  });
+  return null;
+}
+
+/* ---------- Componente Principal ---------- */
 
 export default function App() {
   const [loading, setLoading] = useState(true);
@@ -59,9 +67,10 @@ export default function App() {
   const [zoom, setZoom] = useState(16);
   const [availableLines, setAvailableLines] = useState([]);
   const [selectedLines, setSelectedLines] = useState([]);
-  const [expandedMarkers, setExpandedMarkers] = useState({});
   const [focusedVehicle, setFocusedVehicle] = useState(null);
+  const [showLegend, setShowLegend] = useState(false);
 
+  /* ---------- Paleta de colores para líneas ---------- */
   const colorPalette = [
     "#FFCDD2", "#F8BBD0", "#E1BEE7", "#D1C4E9", "#C5CAE9",
     "#BBDEFB", "#B3E5FC", "#B2EBF2", "#B2DFDB", "#C8E6C9",
@@ -73,55 +82,38 @@ export default function App() {
   const getLineColor = (linea) => {
     const map = colorMapRef.current;
     const used = usedColorsRef.current;
-
     if (!map[linea]) {
-      const availableColors = colorPalette.filter(c => !used.has(c));
-      const color = availableColors.length > 0
-        ? availableColors[Math.floor(Math.random() * availableColors.length)]
+      const free = colorPalette.filter(c => !used.has(c));
+      const color = free.length
+        ? free[Math.floor(Math.random() * free.length)]
         : colorPalette[Math.floor(Math.random() * colorPalette.length)];
-
       map[linea] = color;
       used.add(color);
     }
-
     return map[linea];
   };
 
+  /* ---------- Carga periódica de telemetrías ---------- */
   useEffect(() => {
     const fetchTelemetrias = async () => {
       try {
         const res = await fetch(API_URL);
-        const json = await res.json();
-        const nuevos = json.data || [];
-
-        const porPatente = new Map();
-        for (const t of nuevos) {
-          porPatente.set(t.patente, t);
-        }
-        const deduplicados = Array.from(porPatente.values());
-
-        setExpandedMarkers(prev => {
-          const updated = { ...prev };
-          deduplicados.forEach(t => {
-            if (updated[t.patente] === undefined) updated[t.patente] = false;
-          });
-          return updated;
-        });
-
-        setTelemetrias(deduplicados);
-        const lines = Array.from(new Set(deduplicados.map(t => t.linea))).sort();
+        const { data = [] } = await res.json();
+        const dedupe = Array.from(new Map(data.map(t => [t.patente, t])).values());
+        setTelemetrias(dedupe);
+        const lines = [...new Set(dedupe.map(t => t.linea))].sort();
         setAvailableLines(lines);
         if (selectedLines.length === 0) setSelectedLines(lines);
       } catch (err) {
         console.error("Error obteniendo telemetrías:", err.message);
       }
     };
-
     fetchTelemetrias();
     const id = setInterval(fetchTelemetrias, 1500);
     return () => clearInterval(id);
-  }, [selectedLines]);
+  }, []);
 
+  /* ---------- Carga inicial / GPS ---------- */
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), 2000);
     navigator.geolocation?.getCurrentPosition(
@@ -131,21 +123,59 @@ export default function App() {
     return () => clearTimeout(timer);
   }, []);
 
-  const toggleExpansion = (id) => {
-    setExpandedMarkers((prev) => ({
-      ...prev,
-      [id]: !prev[id],
-    }));
-    setFocusedVehicle(id);
+  /* ---------- Ocultar leyenda al mover mapa ---------- */
+  useEffect(() => {
+    const handleMapMove = () => setShowLegend(false);
+    const mapEl = document.querySelector(".leaflet-container");
+    if (mapEl) {
+      mapEl.addEventListener("mousedown", handleMapMove);
+      mapEl.addEventListener("touchstart", handleMapMove);
+    }
+    return () => {
+      mapEl?.removeEventListener("mousedown", handleMapMove);
+      mapEl?.removeEventListener("touchstart", handleMapMove);
+    };
+  }, []);
+
+  /* ---------- Forzar posición de controles Leaflet ---------- */
+useEffect(() => {
+  const adjustLeafletControls = () => {
+    const zoomCtl = document.querySelector(".leaflet-control-zoom");
+    const attrCtl = document.querySelector(".leaflet-control-attribution");
+
+    if (zoomCtl) {
+      zoomCtl.style.marginBottom = "35px"; // queda justo sobre el texto
+      zoomCtl.style.marginRight = "10px";
+    }
+
+    if (attrCtl) {
+      attrCtl.style.bottom = "0px"; // pegado al borde inferior
+      attrCtl.style.left = "0px";   // asegúrate que esté en la esquina
+      attrCtl.style.right = "0px";  // opcional: que se centre si es necesario
+      attrCtl.style.margin = "0";
+      attrCtl.style.padding = "2px 8px";
+      attrCtl.style.fontSize = "11px";
+    }
   };
 
+  const observer = new MutationObserver(adjustLeafletControls);
+  observer.observe(document.body, { childList: true, subtree: true });
+  adjustLeafletControls();
+
+  return () => observer.disconnect();
+}, []);
+
+
+  /* ---------- Filtrado de líneas ---------- */
   const dataFiltrada = telemetrias.filter(t => selectedLines.includes(t.linea));
 
+  /* ---------- Render ---------- */
   return (
-    <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
+    <div style={{ width: "100vw", height: "100vh", position: "relative", overflow: "hidden" }}>
       {loading && <LoaderOverlay />}
 
-      <div style={{ position: "absolute", top: 10, left: 10, zIndex: 1000, width: "90vw", maxWidth: 500 }}>
+      {/* ---------- Buscador + Leyenda ---------- */}
+      <div style={{ position: "absolute", top: 10, left: 10, zIndex: 1001, width: "90vw", maxWidth: 500 }}>
         <SearchBarDropdown
           lines={availableLines.map(id => ({ id }))}
           selectedLines={selectedLines}
@@ -155,32 +185,73 @@ export default function App() {
             return acc;
           }, {})}
         />
+
+        <button
+          onClick={() => setShowLegend(p => !p)}
+          style={{
+            margin: "8px 0",
+            background: "#ffffffdd",
+            padding: "4px 10px",
+            borderRadius: 4,
+            border: "1px solid #ccc",
+            fontSize: 12,
+            cursor: "pointer"
+          }}
+        >
+          {showLegend ? "✕ Ocultar leyenda" : "☰ Mostrar leyenda"}
+        </button>
+
+        <div style={{
+          background: "rgba(255,255,255,0.85)",
+          padding: showLegend ? "10px" : "0 10px",
+          borderRadius: 8,
+          boxShadow: "0 0 5px rgba(0,0,0,0.15)",
+          overflow: "hidden",
+          transition: "max-height .3s ease, padding .3s ease",
+          maxHeight: showLegend ? 300 : 0
+        }}>
+          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+            {availableLines.map(linea => (
+              <li key={linea} style={{ display: "flex", alignItems: "center", marginBottom: 4 }}>
+                <div style={{
+                  width: 12, height: 12, borderRadius: "50%",
+                  background: getLineColor(linea), marginRight: 8,
+                  border: "1px solid #000"
+                }} />
+                <span style={{ fontSize: 14 }}>{linea}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
 
+      {/* ---------- Mapa ---------- */}
       <MapContainer
         center={copiapoCenter}
-        zoom={16}
-        style={{ width: "100%", height: "100%" }}
+        zoom={15}
+        minZoom={13}
+        maxZoom={19}
         scrollWheelZoom
         zoomControl={false}
         maxBounds={copiapoBounds}
         maxBoundsViscosity={1.0}
-        whenCreated={map => {
+        style={{ width: "100%", height: "100%" }}
+        whenCreated={(map) => {
           setZoom(map.getZoom());
           map.on("zoomend", () => setZoom(map.getZoom()));
+          map.on("click", () => setFocusedVehicle(null));
         }}
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
+        <ZoomLogger onZoomChange={setZoom} />
         <ZoomControl position="bottomright" />
         {userLocation && <Marker position={userLocation} icon={userIcon} />}
         {focusedVehicle && (
           <MoveToLocation
-            position={
-              telemetrias.find(t => t.patente === focusedVehicle)?.gps || null
-            }
+            position={telemetrias.find(t => t.patente === focusedVehicle)?.gps || null}
           />
         )}
         {dataFiltrada.map(t => (
@@ -190,24 +261,20 @@ export default function App() {
             position={[t.gps.lat, t.gps.lng]}
             linea={t.linea}
             color={getLineColor(t.linea)}
-            pasajeros={t.pasajeros}
             zoom={zoom}
-            onClick={() => toggleExpansion(t.patente)}
+            onClick={(id) => setFocusedVehicle(c => (c === id ? null : id))}
+            opacity={focusedVehicle && focusedVehicle !== t.patente ? 0.4 : 1}
           />
         ))}
       </MapContainer>
 
+      {/* ---------- Footer ---------- */}
       <div style={{
         position: "fixed",
-        bottom: 0,
-        width: "100%",
-        textAlign: "center",
-        backgroundColor: "rgba(0,0,0,0.7)",
-        color: "white",
-        padding: "12px 0",
-        fontSize: "16px",
-        fontWeight: "bold",
-        zIndex: 1000
+        bottom: 0, width: "100%", textAlign: "center",
+        background: "rgba(0,0,0,0.6)", color: "#fff",
+        padding: "4px 0", fontSize: 12, fontWeight: 500,
+        zIndex: 1000, pointerEvents: "none"
       }}>
         Coltrack® 2025
       </div>

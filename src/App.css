@@ -23,6 +23,16 @@
   font-size: calc(10px + 2vmin);
   color: white;
 }
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;      /* 👈 Bloquea scroll */
+  touch-action: none;    /* 👈 Previene scroll táctil en móviles */
+  position: relative;
+}
+
 
 .App-link {
   color: #61dafb;
