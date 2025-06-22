@@ -68,13 +68,16 @@ export default function SearchBarDropdown({
 
   return (
     <div ref={containerRef} style={{
-      background: "white",
+      backgroundColor: "rgba(255, 255, 255, 0.85)",
+      backdropFilter: "blur(8px)",
+      WebkitBackdropFilter: "blur(8px)",
       padding: 12,
-      borderRadius: 5,
+      borderRadius: 8,
       width: "100%",
       boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
       position: "relative"
     }}>
+
       <input
         type="text"
         value={filter}
@@ -104,13 +107,16 @@ export default function SearchBarDropdown({
             borderRadius: 4,
             maxHeight: 250,
             overflowY: "auto",
-            backgroundColor: "white",
+            backgroundColor: "rgba(255, 255, 255, 0.85)",
+            backdropFilter: "blur(8px)",
+            WebkitBackdropFilter: "blur(8px)",
             position: "absolute",
             zIndex: 10,
             width: dropdownWidth,
             left: 0
           }}
         >
+
           <li style={{
             position: "sticky",
             top: 0,
