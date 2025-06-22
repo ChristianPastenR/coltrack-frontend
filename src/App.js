@@ -13,20 +13,21 @@ import SearchBarDropdown from "./components/SearchBarDropdown";
 import LoaderOverlay from "./components/loadingOverlay";
 import "leaflet/dist/leaflet.css";
 
-
 const API_URL = "http://159.112.135.140:3001/api/telemetria/recientes";
 const copiapoCenter = [-27.377665428621032, -70.31697510051582];
 const copiapoBounds = [
-  [-27.50, -70.50],
-  [-27.10, -70.20]
+  [-27.55, -70.45], // ⬇️ más al sur (de -27.50 a -27.55), ⬅️ menos al oeste (de -70.50 a -70.45)
+  [-27.20, -70.20]  // ⬆️ menos al norte (de -27.10 a -27.20)
 ];
+
+
+
 
 const userIcon = new L.Icon({
   iconUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png",
   iconSize: [25, 41],
   iconAnchor: [12, 41]
 });
-
 
 function MoveToLocation({ position }) {
   const map = useMap();
@@ -38,19 +39,14 @@ function MoveToLocation({ position }) {
     const currentCenter = map.getCenter();
     const distance = map.distance(currentCenter, L.latLng(position));
 
-    if (lastCenter.current === null) {
-      map.flyTo(position, 18, { duration: 1 });
-      lastCenter.current = position;
-    } else if (distance > 80) {
+    if (lastCenter.current === null || distance > 80) {
       map.panTo(position, { animate: true, duration: 0.5 });
       lastCenter.current = position;
     }
-
   }, [position, map]);
 
   return null;
 }
-
 
 export default function App() {
   const [loading, setLoading] = useState(true);
@@ -59,7 +55,6 @@ export default function App() {
   const [zoom, setZoom] = useState(16);
   const [availableLines, setAvailableLines] = useState([]);
   const [selectedLines, setSelectedLines] = useState([]);
-  const [expandedMarkers, setExpandedMarkers] = useState({});
   const [focusedVehicle, setFocusedVehicle] = useState(null);
 
   const colorPalette = [
@@ -100,14 +95,6 @@ export default function App() {
         }
         const deduplicados = Array.from(porPatente.values());
 
-        setExpandedMarkers(prev => {
-          const updated = { ...prev };
-          deduplicados.forEach(t => {
-            if (updated[t.patente] === undefined) updated[t.patente] = false;
-          });
-          return updated;
-        });
-
         setTelemetrias(deduplicados);
         const lines = Array.from(new Set(deduplicados.map(t => t.linea))).sort();
         setAvailableLines(lines);
@@ -120,7 +107,7 @@ export default function App() {
     fetchTelemetrias();
     const id = setInterval(fetchTelemetrias, 1500);
     return () => clearInterval(id);
-  }, [selectedLines]);
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), 2000);
@@ -130,14 +117,6 @@ export default function App() {
     );
     return () => clearTimeout(timer);
   }, []);
-
-  const toggleExpansion = (id) => {
-    setExpandedMarkers((prev) => ({
-      ...prev,
-      [id]: !prev[id],
-    }));
-    setFocusedVehicle(id);
-  };
 
   const dataFiltrada = telemetrias.filter(t => selectedLines.includes(t.linea));
 
@@ -158,18 +137,22 @@ export default function App() {
       </div>
 
       <MapContainer
-        center={copiapoCenter}
-        zoom={16}
-        style={{ width: "100%", height: "100%" }}
-        scrollWheelZoom
-        zoomControl={false}
-        maxBounds={copiapoBounds}
-        maxBoundsViscosity={1.0}
-        whenCreated={map => {
-          setZoom(map.getZoom());
-          map.on("zoomend", () => setZoom(map.getZoom()));
-        }}
-      >
+          center={copiapoCenter}
+          zoom={16}
+          minZoom={13}                     
+          maxZoom={19}                    
+          style={{ width: "100%", height: "100%" }}
+          scrollWheelZoom
+          zoomControl={false}
+          maxBounds={copiapoBounds}
+          maxBoundsViscosity={1.0}
+          whenCreated={map => {
+            setZoom(map.getZoom());
+            map.on("zoomend", () => setZoom(map.getZoom()));
+            map.on("click", () => setFocusedVehicle(null));
+          }}
+        >
+
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -178,23 +161,27 @@ export default function App() {
         {userLocation && <Marker position={userLocation} icon={userIcon} />}
         {focusedVehicle && (
           <MoveToLocation
-            position={
-              telemetrias.find(t => t.patente === focusedVehicle)?.gps || null
-            }
+            position={telemetrias.find(t => t.patente === focusedVehicle)?.gps || null}
           />
         )}
-        {dataFiltrada.map(t => (
-          <AnimatedMarker
-            key={t.patente}
-            id={t.patente}
-            position={[t.gps.lat, t.gps.lng]}
-            linea={t.linea}
-            color={getLineColor(t.linea)}
-            pasajeros={t.pasajeros}
-            zoom={zoom}
-            onClick={() => toggleExpansion(t.patente)}
-          />
-        ))}
+        {dataFiltrada.map(t => {
+          const isFocused = !focusedVehicle || focusedVehicle === t.patente;
+          return (
+            <AnimatedMarker
+              key={t.patente}
+              id={t.patente}
+              position={[t.gps.lat, t.gps.lng]}
+              linea={t.linea}
+              color={getLineColor(t.linea)}
+              pasajeros={t.pasajeros}
+              zoom={zoom}
+              onClick={(id) => {
+                setFocusedVehicle((current) => (current === id ? null : id));
+              }}
+              opacity={isFocused ? 1 : 0.4}
+            />
+          );
+        })}
       </MapContainer>
 
       <div style={{
