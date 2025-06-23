@@ -27,12 +27,11 @@ export default function AnimatedMarker({
   const map = useMap();
   const markerRef = useRef(null);
   const imgRef = useRef(null);
-  const passengerRef = useRef(null);
+  const wrapperRef = useRef(null);
   const prevState = useRef({ pos: position, bearing: 0 });
 
   const zoomMode = zoom < 14 ? "dot" : "taxi";
 
-  // Crear marcador (solo una vez o si cambia zoomMode)
   useEffect(() => {
     if (markerRef.current) {
       markerRef.current.remove();
@@ -42,6 +41,16 @@ export default function AnimatedMarker({
     const div = document.createElement("div");
     div.style.position = "relative";
 
+    const wrapper = document.createElement("div");
+    wrapper.style.cssText = `
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      transform-origin: center center;
+      transition: transform 0.3s ease, flex-direction 0.3s ease;
+    `;
+    wrapperRef.current = wrapper;
+
     if (zoomMode === "dot") {
       const circle = document.createElement("div");
       circle.style.cssText = `
@@ -49,21 +58,15 @@ export default function AnimatedMarker({
         height: 14px;
         background: ${color};
         border-radius: 50%;
-        border: 2px solid black; 
+        border: 2px solid black;
         opacity: ${opacity};
         box-shadow: 0 0 6px rgba(0,0,0,0.4);
         transform: translate(-50%, -50%);
       `;
       div.appendChild(circle);
     } else {
-      // 🚕 Taxi + etiqueta
       const label = document.createElement("div");
       label.style.cssText = `
-        position: absolute;
-        bottom: 36px;
-        text-align: center;
-        left: 50%;
-        transform: translateX(-50%);
         background: ${color};
         padding: 4px 8px;
         border-radius: 6px;
@@ -73,22 +76,37 @@ export default function AnimatedMarker({
         transition: all 0.3s ease;
       `;
 
-      const lineText = document.createElement("div");
-      lineText.textContent = `${linea}`;
-      label.appendChild(lineText);
+      const labelText = document.createElement("div");
+      const showingPassengers = focused && typeof pasajeros === "number" && !isNaN(pasajeros);
 
-      const passengerText = document.createElement("div");
-      passengerText.textContent = `Pasajeros: ${pasajeros ?? "?"}`;
-      passengerText.style.cssText = `
-        font-weight: normal;
-        font: bold 12px sans-serif;
-        max-height: 0;
-        overflow: hidden;
-        opacity: 0;
-        transition: max-height 0.3s ease, opacity 0.3s ease;
-      `;
-      label.appendChild(passengerText);
-      passengerRef.current = passengerText;
+      if (showingPassengers) {
+        labelText.textContent = `👤 ${pasajeros}`;
+        labelText.style.cssText = `
+          font: bold 14px sans-serif;
+          color: black;
+          text-align: center;
+          opacity: 0;
+          transform: translateY(6px);
+          transition: opacity 0.3s ease, transform 0.3s ease;
+        `;
+      } else {
+        labelText.textContent = `${linea}`;
+        labelText.style.cssText = `
+          font: normal 11px sans-serif;
+          color: black;
+          text-align: center;
+          opacity: 0;
+          transform: translateY(6px);
+          transition: opacity 0.3s ease, transform 0.3s ease;
+        `;
+      }
+
+      requestAnimationFrame(() => {
+        labelText.style.opacity = "1";
+        labelText.style.transform = "translateY(0)";
+      });
+
+      label.appendChild(labelText);
 
       const img = document.createElement("img");
       imgRef.current = img;
@@ -98,17 +116,18 @@ export default function AnimatedMarker({
       img.style.cssText = `
         opacity: ${opacity};
         transition: transform 0.3s ease;
-        transform: scale(${focused ? 1.4 : 1});
       `;
 
-      div.append(label, img);
+      wrapper.appendChild(label);
+      wrapper.appendChild(img);
+      div.appendChild(wrapper);
     }
 
     const icon = L.divIcon({
       html: div,
       className: "",
       iconSize: zoomMode === "dot" ? [20, 20] : [60, 60],
-      iconAnchor: [10, 10]
+      iconAnchor: zoomMode === "dot" ? [10, 10] : [30, 55]
     });
 
     const marker = L.marker(position, { icon });
@@ -123,9 +142,8 @@ export default function AnimatedMarker({
     return () => {
       marker.remove();
     };
-  }, [zoomMode, linea, color, opacity]);
+  }, [zoomMode, linea, color, opacity, focused]);
 
-  // Movimiento y rotación
   useEffect(() => {
     if (!markerRef.current) return;
 
@@ -139,14 +157,23 @@ export default function AnimatedMarker({
 
     prevState.current = { pos: position, bearing };
 
-    // Rotación para taxi
-    if (zoomMode === "taxi" && imgRef.current) {
-      const rot = (bearing - 90 + 360) % 360;
-      const flip = rot > 90 && rot < 270 ? "scaleY(-1)" : "scaleY(1)";
-      imgRef.current.style.transform = `rotate(${rot}deg) ${flip} scale(${focused ? 1.4 : 1})`;
+    if (zoomMode === "taxi" && wrapperRef.current && imgRef.current) {
+      const angle = (bearing - 90 + 360) % 360;
+      wrapperRef.current.style.transform = `rotate(${angle}deg)`;
+
+      const flip = angle > 90 && angle < 270;
+imgRef.current.style.transform = flip ? "scaleY(-1)" : "scaleY(1)";
+wrapperRef.current.style.flexDirection = flip ? "column-reverse" : "column";
+
+const label = wrapperRef.current.firstChild;
+if (label) {
+  // Aplica rotación de 180° adicional solo si el vehículo apunta hacia abajo
+  label.style.transform = flip ? "rotate(180deg)" : "rotate(0deg)";
+}
+
+
     }
 
-    // Movimiento suave
     const cur = markerRef.current.getLatLng();
     if (cur.lat !== position[0] || cur.lng !== position[1]) {
       markerRef.current.slideTo(position, {
@@ -155,21 +182,6 @@ export default function AnimatedMarker({
       });
     }
   }, [position, zoomMode]);
-
-  // Animaciones por selección
-  useEffect(() => {
-    if (passengerRef.current) {
-      passengerRef.current.style.maxHeight = focused ? "40px" : "0";
-      passengerRef.current.style.opacity = focused ? "1" : "0";
-    }
-
-    if (imgRef.current && zoomMode === "taxi") {
-      const current = imgRef.current.style.transform || "";
-      const rot = current.match(/rotate\([^)]+\)/)?.[0] || "";
-      const flip = current.includes("scaleY(-1)") ? "scaleY(-1)" : "scaleY(1)";
-      imgRef.current.style.transform = `${rot} ${flip} scale(${focused ? 1.4 : 1})`.trim();
-    }
-  }, [focused, zoomMode]);
 
   return null;
 }
