@@ -63,6 +63,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [telemetrias, setTelemetrias] = useState([]);
   const [userLocation, setUserLocation] = useState(null);
+  const [focusedUser, setFocusedUser] = useState(false); // 👈 nuevo estado
   const [zoom, setZoom] = useState(16);
   const [availableLines, setAvailableLines] = useState([]);
   const [selectedLines, setSelectedLines] = useState([]);
@@ -158,19 +159,26 @@ export default function App() {
       alert("Tu navegador no soporta geolocalización.");
       return;
     }
+
     navigator.geolocation.getCurrentPosition(
       ({ coords }) => {
         const location = [coords.latitude, coords.longitude];
         setUserLocation(location);
-        if (mapRef) {
-          mapRef.flyTo(location, 15, { duration: 0.5 });
-        }
+        setFocusedUser(true); // 👈 activa el centrado animado
       },
       () => {
         alert("No se pudo obtener tu ubicación. Por favor, permite el acceso al GPS.");
       }
     );
   };
+
+  // 🔄 Desactiva centrado del usuario luego de usar MoveToLocation
+  useEffect(() => {
+    if (focusedUser) {
+      const timeout = setTimeout(() => setFocusedUser(false), 1000);
+      return () => clearTimeout(timeout);
+    }
+  }, [focusedUser]);
 
   const dataFiltrada = telemetrias.filter(t => selectedLines.includes(t.linea));
 
@@ -299,26 +307,31 @@ export default function App() {
         />
         <ZoomLogger onZoomChange={setZoom} />
         <ZoomControl position="bottomright" />
+
         {userLocation && <Marker position={userLocation} icon={userIcon} />}
+        {userLocation && focusedUser && <MoveToLocation position={userLocation} />}
         {focusedVehicle && (
           <MoveToLocation
             position={telemetrias.find(t => t.patente === focusedVehicle)?.gps || null}
           />
         )}
-        {dataFiltrada.map(t => (
-          <AnimatedMarker
-            key={t.patente}
-            id={t.patente}
-            position={[t.gps.lat, t.gps.lng]}
-            linea={t.linea}
-            pasajeros={t.pasajeros}
-            color={getLineColor(t.linea)}
-            zoom={zoom}
-            onClick={(id) => setFocusedVehicle(c => (c === id ? null : id))}
-            opacity={focusedVehicle && focusedVehicle !== t.patente ? 0.4 : 1}
-            focused={focusedVehicle === t.patente}
-          />
-        ))}
+
+        {telemetrias
+          .filter(t => selectedLines.includes(t.linea))
+          .map(t => (
+            <AnimatedMarker
+              key={t.patente}
+              id={t.patente}
+              position={[t.gps.lat, t.gps.lng]}
+              linea={t.linea}
+              pasajeros={t.pasajeros}
+              color={getLineColor(t.linea)}
+              zoom={zoom}
+              onClick={(id) => setFocusedVehicle(c => (c === id ? null : id))}
+              opacity={focusedVehicle && focusedVehicle !== t.patente ? 0.4 : 1}
+              focused={focusedVehicle === t.patente}
+            />
+          ))}
       </MapContainer>
 
       <div style={{
