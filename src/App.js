@@ -158,7 +158,7 @@ export default function App() {
     return () => observer.disconnect();
   }, []);
 
-  // ✅ Solicita ubicación y centra el mapa inmediatamente
+  // ✅ Solicita ubicación y centra el mapa en el marcador del usuario
   const centerOnUser = () => {
     if (!navigator.geolocation) {
       alert("Tu navegador no soporta geolocalización.");
@@ -168,9 +168,11 @@ export default function App() {
     navigator.geolocation.getCurrentPosition(
       ({ coords }) => {
         const location = [coords.latitude, coords.longitude];
-        setUserLocation(location); // esto activa el marcador
+        setUserLocation(location);
         if (mapRef) {
-          mapRef.flyTo(location, 15, { duration: 0.5 });
+          setTimeout(() => {
+            mapRef.flyTo(location, 15, { duration: 0.5 });
+          }, 100);
         }
       },
       (err) => {
@@ -186,7 +188,7 @@ export default function App() {
     <div style={{ width: "100vw", height: "100vh", position: "relative", overflow: "hidden" }}>
       {loading && <LoaderOverlay />}
 
-      {/* Panel izquierdo: buscador y leyenda */}
+      {/* Panel: selector y leyenda */}
       <div style={{ position: "absolute", top: 10, left: 10, zIndex: 1001, width: "90vw", maxWidth: 500 }}>
         <SearchBarDropdown
           lines={availableLines.map(id => ({ id }))}
@@ -237,13 +239,13 @@ export default function App() {
         </div>
       </div>
 
-      {/* ✅ Botón GPS, por encima del control de zoom */}
+      {/* ✅ Botón GPS encima del control de zoom */}
       <button
         onClick={centerOnUser}
         style={{
           position: "absolute",
-          bottom: 300,
-          right: 8,
+          bottom: 250,
+          right: 7,
           zIndex: 1001,
           background: "#ffffffdd",
           border: "1px solid #ccc",
@@ -278,6 +280,7 @@ export default function App() {
         </svg>
       </button>
 
+      {/* Mapa principal */}
       <MapContainer
         center={copiapoCenter}
         zoom={15}
@@ -332,6 +335,7 @@ export default function App() {
         ))}
       </MapContainer>
 
+      {/* Footer */}
       <div style={{
         position: "fixed",
         bottom: 0,
