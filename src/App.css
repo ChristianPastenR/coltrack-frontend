@@ -12,6 +12,9 @@
     animation: App-logo-spin infinite 20s linear;
   }
 }
+.leaflet-marker-icon.user-location-icon {
+  filter: hue-rotate(-100deg) saturate(6);
+}
 
 .App-header {
   background-color: #282c34;
