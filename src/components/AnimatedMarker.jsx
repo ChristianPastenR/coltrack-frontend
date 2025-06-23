@@ -30,7 +30,7 @@ export default function AnimatedMarker({
   const passengerRef = useRef(null);
   const prevState = useRef({ pos: position, bearing: 0 });
 
-  const zoomMode = zoom < 15 ? "dot" : "taxi";
+  const zoomMode = zoom < 14 ? "dot" : "taxi";
 
   // Crear marcador (solo una vez o si cambia zoomMode)
   useEffect(() => {
