@@ -43,8 +43,10 @@ function MoveToLocation({ position }) {
     const currentCenter = map.getCenter();
     const distance = map.distance(currentCenter, L.latLng(position));
 
+    const safeZoom = Math.min(17, map.getMaxZoom());
+
     if (lastCenter.current === null || distance > 80) {
-      map.flyTo(position, 17, { duration: 0.5 });
+      map.flyTo(position, safeZoom, { duration: 0.5 });
     } else {
       map.panTo(position, { animate: true, duration: 0.5 });
     }
@@ -53,6 +55,7 @@ function MoveToLocation({ position }) {
 
   return null;
 }
+
 
 function MoveToLocations({ positions }) {
   const map = useMap();
@@ -63,13 +66,17 @@ function MoveToLocations({ positions }) {
 
     const bounds = L.latLngBounds(positions);
     if (!lastBounds.current || !lastBounds.current.contains(bounds)) {
-      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 17 });
+      map.fitBounds(bounds, {
+        padding: [50, 50],
+        maxZoom: Math.min(17, map.getMaxZoom())
+      });
       lastBounds.current = bounds;
     }
   }, [positions, map]);
 
   return null;
 }
+
 
 
 
@@ -251,21 +258,32 @@ useEffect(() => {
 
       {/* ---------- Mapa ---------- */}
       <MapContainer
-        center={copiapoCenter}
-        zoom={15}
-        minZoom={13}
-        maxZoom={19}
-        scrollWheelZoom
-        zoomControl={false}
-        maxBounds={copiapoBounds}
-        maxBoundsViscosity={1.0}
-        style={{ width: "100%", height: "100%" }}
-        whenCreated={(map) => {
-          setZoom(map.getZoom());
-          map.on("zoomend", () => setZoom(map.getZoom()));
-          map.on("click", () => setFocusedVehicle(null));
-        }}
-      >
+          center={copiapoCenter}
+          zoom={15}
+          minZoom={13}
+          maxZoom={19}
+          scrollWheelZoom
+          zoomControl={false}
+          maxBounds={copiapoBounds}
+          maxBoundsViscosity={1.0}
+          wheelPxPerZoomLevel={100} // scroll más suave para evitar zooms excesivos
+          style={{ width: "100%", height: "100%" }}
+          whenCreated={(map) => {
+            const safeZoom = Math.min(map.getZoom(), map.getMaxZoom());
+            setZoom(safeZoom);
+
+            map.on("zoomend", () => {
+              const z = map.getZoom();
+              if (z > map.getMaxZoom()) {
+                map.setZoom(map.getMaxZoom());
+              }
+              setZoom(z);
+            });
+
+            map.on("click", () => setFocusedVehicle(null));
+          }}
+        >
+
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
