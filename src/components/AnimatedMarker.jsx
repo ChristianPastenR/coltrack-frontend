@@ -28,11 +28,16 @@ export default function AnimatedMarker({
   const markerRef = useRef(null);
   const imgRef = useRef(null);
   const wrapperRef = useRef(null);
+  const labelTextRef = useRef(null);
   const prevState = useRef({ pos: position, bearing: 0 });
+  const prevZoomMode = useRef(null);
 
   const zoomMode = zoom < 14 ? "dot" : "taxi";
 
   useEffect(() => {
+    const shouldRecreate = zoomMode !== prevZoomMode.current || !markerRef.current;
+    if (!shouldRecreate) return;
+
     if (markerRef.current) {
       markerRef.current.remove();
       markerRef.current = null;
@@ -77,29 +82,18 @@ export default function AnimatedMarker({
       `;
 
       const labelText = document.createElement("div");
-      const showingPassengers = focused && typeof pasajeros === "number" && !isNaN(pasajeros);
+      labelTextRef.current = labelText;
 
-      if (showingPassengers) {
-        labelText.textContent = `👤 ${pasajeros}`;
-        labelText.style.cssText = `
-          font: bold 14px sans-serif;
-          color: black;
-          text-align: center;
-          opacity: 0;
-          transform: translateY(6px);
-          transition: opacity 0.3s ease, transform 0.3s ease;
-        `;
-      } else {
-        labelText.textContent = `${linea}`;
-        labelText.style.cssText = `
-          font: normal 11px sans-serif;
-          color: black;
-          text-align: center;
-          opacity: 0;
-          transform: translateY(6px);
-          transition: opacity 0.3s ease, transform 0.3s ease;
-        `;
-      }
+      const validPasajeros = typeof pasajeros === "number" && !isNaN(pasajeros);
+      labelText.textContent = focused && validPasajeros ? `👤 ${pasajeros}` : `${linea}`;
+      labelText.style.cssText = `
+        font: ${focused && validPasajeros ? "bold 14px" : "normal 11px"} sans-serif;
+        color: black;
+        text-align: center;
+        opacity: 0;
+        transform: translateY(6px);
+        transition: opacity 0.3s ease, transform 0.3s ease;
+      `;
 
       requestAnimationFrame(() => {
         labelText.style.opacity = "1";
@@ -138,11 +132,8 @@ export default function AnimatedMarker({
     });
 
     markerRef.current = marker;
-
-    return () => {
-      marker.remove();
-    };
-  }, [zoomMode, linea, color, opacity, focused]);
+    prevZoomMode.current = zoomMode;
+  }, [zoomMode, linea, color, opacity, focused, id, onClick, pasajeros]);
 
   useEffect(() => {
     if (!markerRef.current) return;
@@ -162,26 +153,42 @@ export default function AnimatedMarker({
       wrapperRef.current.style.transform = `rotate(${angle}deg)`;
 
       const flip = angle > 90 && angle < 270;
-imgRef.current.style.transform = flip ? "scaleY(-1)" : "scaleY(1)";
-wrapperRef.current.style.flexDirection = flip ? "column-reverse" : "column";
+      imgRef.current.style.transform = flip ? "scaleY(-1)" : "scaleY(1)";
+      wrapperRef.current.style.flexDirection = flip ? "column-reverse" : "column";
 
-const label = wrapperRef.current.firstChild;
-if (label) {
-  // Aplica rotación de 180° adicional solo si el vehículo apunta hacia abajo
-  label.style.transform = flip ? "rotate(180deg)" : "rotate(0deg)";
-}
-
-
+      const label = wrapperRef.current.firstChild;
+      if (label) {
+        label.style.transform = flip ? "rotate(180deg)" : "rotate(0deg)";
+      }
     }
 
     const cur = markerRef.current.getLatLng();
-    if (cur.lat !== position[0] || cur.lng !== position[1]) {
+    if (Math.abs(cur.lat - position[0]) > 0.00001 || Math.abs(cur.lng - position[1]) > 0.00001) {
       markerRef.current.slideTo(position, {
         duration: 2000,
         easing: "easeInOutSine"
       });
     }
   }, [position, zoomMode]);
+
+  // 🔁 Actualiza dinámicamente el texto del label
+  useEffect(() => {
+    if (!labelTextRef.current) return;
+    const validPasajeros = typeof pasajeros === "number" && !isNaN(pasajeros);
+    labelTextRef.current.textContent = focused && validPasajeros ? `👤 ${pasajeros}` : `${linea}`;
+  }, [pasajeros, focused, linea]);
+
+  // 🔁 Actualiza opacidad del ícono y el texto al hacer foco
+  useEffect(() => {
+    if (zoomMode === "taxi") {
+      if (imgRef.current) imgRef.current.style.opacity = opacity;
+      const label = wrapperRef.current?.querySelector("div");
+      if (label) label.style.opacity = opacity;
+    } else {
+      const circle = markerRef.current?.getElement()?.firstChild;
+      if (circle) circle.style.opacity = opacity;
+    }
+  }, [opacity, zoomMode]);
 
   return null;
 }
