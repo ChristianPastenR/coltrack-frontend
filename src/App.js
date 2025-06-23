@@ -14,7 +14,7 @@ import SearchBarDropdown from "./components/SearchBarDropdown";
 import LoaderOverlay from "./components/loadingOverlay";
 import "leaflet/dist/leaflet.css";
 
-const API_URL = "http://159.112.135.140:3001/api/telemetria/recientes";
+const API_URL = "https://api-coltrackapp.duckdns.org/api/telemetria/recientes";
 const copiapoCenter = [-27.377665428621032, -70.31697510051582];
 const copiapoBounds = [
   [-27.476759948156687, -70.3671334115435],
@@ -44,6 +44,7 @@ function MoveToLocation({ position }) {
       map.panTo(position, { animate: true, duration: 0.5 });
     }
     lastCenter.current = position;
+    
   }, [position, map]);
 
   return null;
@@ -256,15 +257,18 @@ useEffect(() => {
         )}
         {dataFiltrada.map(t => (
           <AnimatedMarker
-            key={t.patente}
-            id={t.patente}
-            position={[t.gps.lat, t.gps.lng]}
-            linea={t.linea}
-            color={getLineColor(t.linea)}
-            zoom={zoom}
-            onClick={(id) => setFocusedVehicle(c => (c === id ? null : id))}
-            opacity={focusedVehicle && focusedVehicle !== t.patente ? 0.4 : 1}
-          />
+              key={t.patente}
+              id={t.patente}
+              position={[t.gps.lat, t.gps.lng]}
+              linea={t.linea}
+              pasajeros={t.pasajeros}
+              color={getLineColor(t.linea)}
+              zoom={zoom}
+              onClick={(id) => setFocusedVehicle(c => (c === id ? null : id))}
+              opacity={focusedVehicle && focusedVehicle !== t.patente ? 0.4 : 1}
+              focused={focusedVehicle === t.patente} // 👈 nuevo
+            />
+
         ))}
       </MapContainer>
 
