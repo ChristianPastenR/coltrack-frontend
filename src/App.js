@@ -17,11 +17,9 @@ import "leaflet/dist/leaflet.css";
 const API_URL = "https://api-coltrackapp.duckdns.org/api/telemetria/recientes";
 const copiapoCenter = [-27.377665428621032, -70.31697510051582];
 const copiapoBounds = [
-  [-27.5068, -70.3971], // suroeste: más al sur y más al oeste
-  [-27.3105, -70.2165]  // noreste: más al norte y más al este
+  [-27.5068, -70.3971],
+  [-27.3105, -70.2165]
 ];
-
-
 
 const userIcon = new L.Icon({
   iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png",
@@ -31,8 +29,6 @@ const userIcon = new L.Icon({
   popupAnchor: [1, -34],
   shadowSize: [41, 41]
 });
-
-
 
 function MoveToLocation({ position }) {
   const map = useMap();
@@ -56,30 +52,6 @@ function MoveToLocation({ position }) {
   return null;
 }
 
-
-function MoveToLocations({ positions }) {
-  const map = useMap();
-  const lastBounds = useRef(null);
-
-  useEffect(() => {
-    if (!positions || positions.length < 2) return;
-
-    const bounds = L.latLngBounds(positions);
-    if (!lastBounds.current || !lastBounds.current.contains(bounds)) {
-      map.fitBounds(bounds, {
-        padding: [50, 50],
-        maxZoom: Math.min(17, map.getMaxZoom())
-      });
-      lastBounds.current = bounds;
-    }
-  }, [positions, map]);
-
-  return null;
-}
-
-
-
-
 function ZoomLogger({ onZoomChange }) {
   useMapEvents({
     zoomend(e) {
@@ -88,8 +60,6 @@ function ZoomLogger({ onZoomChange }) {
   });
   return null;
 }
-
-/* ---------- Componente Principal ---------- */
 
 export default function App() {
   const [loading, setLoading] = useState(true);
@@ -100,8 +70,8 @@ export default function App() {
   const [selectedLines, setSelectedLines] = useState([]);
   const [focusedVehicle, setFocusedVehicle] = useState(null);
   const [showLegend, setShowLegend] = useState(false);
+  const [mapRef, setMapRef] = useState(null);
 
-  /* ---------- Paleta de colores para líneas ---------- */
   const colorPalette = [
     "#FFCDD2", "#F8BBD0", "#E1BEE7", "#D1C4E9", "#C5CAE9",
     "#BBDEFB", "#B3E5FC", "#B2EBF2", "#B2DFDB", "#C8E6C9",
@@ -124,7 +94,6 @@ export default function App() {
     return map[linea];
   };
 
-  /* ---------- Carga periódica de telemetrías ---------- */
   useEffect(() => {
     const fetchTelemetrias = async () => {
       try {
@@ -144,17 +113,11 @@ export default function App() {
     return () => clearInterval(id);
   }, []);
 
-  /* ---------- Carga inicial / GPS ---------- */
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), 2000);
-    navigator.geolocation?.getCurrentPosition(
-      ({ coords }) => setUserLocation([coords.latitude, coords.longitude]),
-      err => console.warn("GPS desactivado/denegado:", err.message)
-    );
     return () => clearTimeout(timer);
   }, []);
 
-  /* ---------- Ocultar leyenda al mover mapa ---------- */
   useEffect(() => {
     const handleMapMove = () => setShowLegend(false);
     const mapEl = document.querySelector(".leaflet-container");
@@ -168,44 +131,61 @@ export default function App() {
     };
   }, []);
 
-  /* ---------- Forzar posición de controles Leaflet ---------- */
-useEffect(() => {
-  const adjustLeafletControls = () => {
-    const zoomCtl = document.querySelector(".leaflet-control-zoom");
-    const attrCtl = document.querySelector(".leaflet-control-attribution");
+  useEffect(() => {
+    const adjustLeafletControls = () => {
+      const zoomCtl = document.querySelector(".leaflet-control-zoom");
+      const attrCtl = document.querySelector(".leaflet-control-attribution");
 
-    if (zoomCtl) {
-      zoomCtl.style.marginBottom = "35px"; // queda justo sobre el texto
-      zoomCtl.style.marginRight = "10px";
+      if (zoomCtl) {
+        zoomCtl.style.marginBottom = "35px";
+        zoomCtl.style.marginRight = "10px";
+      }
+
+      if (attrCtl) {
+        attrCtl.style.bottom = "0px";
+        attrCtl.style.left = "0px";
+        attrCtl.style.right = "0px";
+        attrCtl.style.margin = "0";
+        attrCtl.style.padding = "2px 8px";
+        attrCtl.style.fontSize = "11px";
+      }
+    };
+
+    const observer = new MutationObserver(adjustLeafletControls);
+    observer.observe(document.body, { childList: true, subtree: true });
+    adjustLeafletControls();
+
+    return () => observer.disconnect();
+  }, []);
+
+  const centerOnUser = () => {
+    if (!navigator.geolocation) {
+      alert("Tu navegador no soporta geolocalización.");
+      return;
     }
 
-    if (attrCtl) {
-      attrCtl.style.bottom = "0px"; // pegado al borde inferior
-      attrCtl.style.left = "0px";   // asegúrate que esté en la esquina
-      attrCtl.style.right = "0px";  // opcional: que se centre si es necesario
-      attrCtl.style.margin = "0";
-      attrCtl.style.padding = "2px 8px";
-      attrCtl.style.fontSize = "11px";
-    }
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        const location = [coords.latitude, coords.longitude];
+        setUserLocation(location);
+        if (mapRef) {
+          mapRef.flyTo(location, 15, { duration: 0.5 });
+        }
+      },
+      (err) => {
+        console.warn("Acceso a GPS denegado o falló:", err.message);
+        alert("No se pudo obtener tu ubicación. Por favor, permite el acceso al GPS.");
+      }
+    );
   };
 
-  const observer = new MutationObserver(adjustLeafletControls);
-  observer.observe(document.body, { childList: true, subtree: true });
-  adjustLeafletControls();
-
-  return () => observer.disconnect();
-}, []);
-
-
-  /* ---------- Filtrado de líneas ---------- */
   const dataFiltrada = telemetrias.filter(t => selectedLines.includes(t.linea));
 
-  /* ---------- Render ---------- */
   return (
     <div style={{ width: "100vw", height: "100vh", position: "relative", overflow: "hidden" }}>
       {loading && <LoaderOverlay />}
 
-      {/* ---------- Buscador + Leyenda ---------- */}
+      {/* Leyenda y selector */}
       <div style={{ position: "absolute", top: 10, left: 10, zIndex: 1001, width: "90vw", maxWidth: 500 }}>
         <SearchBarDropdown
           lines={availableLines.map(id => ({ id }))}
@@ -256,34 +236,73 @@ useEffect(() => {
         </div>
       </div>
 
-      {/* ---------- Mapa ---------- */}
-      <MapContainer
-          center={copiapoCenter}
-          zoom={15}
-          minZoom={13}
-          maxZoom={19}
-          scrollWheelZoom
-          zoomControl={false}
-          maxBounds={copiapoBounds}
-          maxBoundsViscosity={1.0}
-          wheelPxPerZoomLevel={100} // scroll más suave para evitar zooms excesivos
-          style={{ width: "100%", height: "100%" }}
-          whenCreated={(map) => {
-            const safeZoom = Math.min(map.getZoom(), map.getMaxZoom());
-            setZoom(safeZoom);
-
-            map.on("zoomend", () => {
-              const z = map.getZoom();
-              if (z > map.getMaxZoom()) {
-                map.setZoom(map.getMaxZoom());
-              }
-              setZoom(z);
-            });
-
-            map.on("click", () => setFocusedVehicle(null));
-          }}
+      {/* Botón GPS */}
+      <button
+        onClick={centerOnUser}
+        style={{
+          position: "absolute",
+          bottom: 70,
+          right: 10,
+          zIndex: 1001,
+          background: "#ffffffdd",
+          border: "1px solid #ccc",
+          borderRadius: "50%",
+          width: 40,
+          height: 40,
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          boxShadow: "0 2px 5px rgba(0,0,0,0.2)",
+          padding: 0
+        }}
+        title="Centrar en mi ubicación"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#000"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
         >
+          <circle cx="12" cy="12" r="10" />
+          <line x1="12" y1="2" x2="12" y2="6" />
+          <line x1="12" y1="18" x2="12" y2="22" />
+          <line x1="2" y1="12" x2="6" y2="12" />
+          <line x1="18" y1="12" x2="22" y2="12" />
+        </svg>
+      </button>
 
+      <MapContainer
+        center={copiapoCenter}
+        zoom={15}
+        minZoom={13}
+        maxZoom={19}
+        scrollWheelZoom
+        zoomControl={false}
+        maxBounds={copiapoBounds}
+        maxBoundsViscosity={1.0}
+        wheelPxPerZoomLevel={100}
+        style={{ width: "100%", height: "100%" }}
+        whenCreated={(map) => {
+          setMapRef(map);
+          setZoom(Math.min(map.getZoom(), map.getMaxZoom()));
+
+          map.on("zoomend", () => {
+            const z = map.getZoom();
+            if (z > map.getMaxZoom()) {
+              map.setZoom(map.getMaxZoom());
+            }
+            setZoom(z);
+          });
+
+          map.on("click", () => setFocusedVehicle(null));
+        }}
+      >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -292,43 +311,38 @@ useEffect(() => {
         <ZoomControl position="bottomright" />
         {userLocation && <Marker position={userLocation} icon={userIcon} />}
         {focusedVehicle && (
-          userLocation ? (
-            <MoveToLocations
-              positions={[
-                telemetrias.find(t => t.patente === focusedVehicle)?.gps,
-                userLocation
-              ].filter(Boolean)}
-            />
-          ) : (
-            <MoveToLocation
-              position={telemetrias.find(t => t.patente === focusedVehicle)?.gps || null}
-            />
-          )
+          <MoveToLocation
+            position={telemetrias.find(t => t.patente === focusedVehicle)?.gps || null}
+          />
         )}
         {dataFiltrada.map(t => (
           <AnimatedMarker
-              key={t.patente}
-              id={t.patente}
-              position={[t.gps.lat, t.gps.lng]}
-              linea={t.linea}
-              pasajeros={t.pasajeros}
-              color={getLineColor(t.linea)}
-              zoom={zoom}
-              onClick={(id) => setFocusedVehicle(c => (c === id ? null : id))}
-              opacity={focusedVehicle && focusedVehicle !== t.patente ? 0.4 : 1}
-              focused={focusedVehicle === t.patente} // 👈 nuevo
-            />
-
+            key={t.patente}
+            id={t.patente}
+            position={[t.gps.lat, t.gps.lng]}
+            linea={t.linea}
+            pasajeros={t.pasajeros}
+            color={getLineColor(t.linea)}
+            zoom={zoom}
+            onClick={(id) => setFocusedVehicle(c => (c === id ? null : id))}
+            opacity={focusedVehicle && focusedVehicle !== t.patente ? 0.4 : 1}
+            focused={focusedVehicle === t.patente}
+          />
         ))}
       </MapContainer>
 
-      {/* ---------- Footer ---------- */}
       <div style={{
         position: "fixed",
-        bottom: 0, width: "100%", textAlign: "center",
-        background: "rgba(0,0,0,0.6)", color: "#fff",
-        padding: "4px 0", fontSize: 12, fontWeight: 500,
-        zIndex: 1000, pointerEvents: "none"
+        bottom: 0,
+        width: "100%",
+        textAlign: "center",
+        background: "rgba(0,0,0,0.6)",
+        color: "#fff",
+        padding: "4px 0",
+        fontSize: 12,
+        fontWeight: 500,
+        zIndex: 1000,
+        pointerEvents: "none"
       }}>
         Coltrack® 2025
       </div>
