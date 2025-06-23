@@ -23,11 +23,15 @@ const copiapoBounds = [
 
 const userIcon = new L.Icon({
   iconUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png",
+  iconRetinaUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png",
+  shadowUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png",
   iconSize: [25, 41],
-  iconAnchor: [12, 41]
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41],
+  className: 'user-location-icon'
 });
 
-/* ---------- Helpers de Leaflet ---------- */
 
 function MoveToLocation({ position }) {
   const map = useMap();
@@ -44,11 +48,29 @@ function MoveToLocation({ position }) {
       map.panTo(position, { animate: true, duration: 0.5 });
     }
     lastCenter.current = position;
-    
   }, [position, map]);
 
   return null;
 }
+
+function MoveToLocations({ positions }) {
+  const map = useMap();
+  const lastBounds = useRef(null);
+
+  useEffect(() => {
+    if (!positions || positions.length < 2) return;
+
+    const bounds = L.latLngBounds(positions);
+    if (!lastBounds.current || !lastBounds.current.contains(bounds)) {
+      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 17 });
+      lastBounds.current = bounds;
+    }
+  }, [positions, map]);
+
+  return null;
+}
+
+
 
 function ZoomLogger({ onZoomChange }) {
   useMapEvents({
@@ -251,9 +273,18 @@ useEffect(() => {
         <ZoomControl position="bottomright" />
         {userLocation && <Marker position={userLocation} icon={userIcon} />}
         {focusedVehicle && (
-          <MoveToLocation
-            position={telemetrias.find(t => t.patente === focusedVehicle)?.gps || null}
-          />
+          userLocation ? (
+            <MoveToLocations
+              positions={[
+                telemetrias.find(t => t.patente === focusedVehicle)?.gps,
+                userLocation
+              ].filter(Boolean)}
+            />
+          ) : (
+            <MoveToLocation
+              position={telemetrias.find(t => t.patente === focusedVehicle)?.gps || null}
+            />
+          )
         )}
         {dataFiltrada.map(t => (
           <AnimatedMarker
