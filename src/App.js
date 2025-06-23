@@ -158,6 +158,7 @@ export default function App() {
     return () => observer.disconnect();
   }, []);
 
+  // ✅ Solicita ubicación y centra el mapa inmediatamente
   const centerOnUser = () => {
     if (!navigator.geolocation) {
       alert("Tu navegador no soporta geolocalización.");
@@ -167,7 +168,7 @@ export default function App() {
     navigator.geolocation.getCurrentPosition(
       ({ coords }) => {
         const location = [coords.latitude, coords.longitude];
-        setUserLocation(location);
+        setUserLocation(location); // esto activa el marcador
         if (mapRef) {
           mapRef.flyTo(location, 15, { duration: 0.5 });
         }
@@ -185,7 +186,7 @@ export default function App() {
     <div style={{ width: "100vw", height: "100vh", position: "relative", overflow: "hidden" }}>
       {loading && <LoaderOverlay />}
 
-      {/* Leyenda y selector */}
+      {/* Panel izquierdo: buscador y leyenda */}
       <div style={{ position: "absolute", top: 10, left: 10, zIndex: 1001, width: "90vw", maxWidth: 500 }}>
         <SearchBarDropdown
           lines={availableLines.map(id => ({ id }))}
@@ -236,13 +237,13 @@ export default function App() {
         </div>
       </div>
 
-      {/* Botón GPS */}
+      {/* ✅ Botón GPS, por encima del control de zoom */}
       <button
         onClick={centerOnUser}
         style={{
           position: "absolute",
-          bottom: 70,
-          right: 10,
+          bottom: 300,
+          right: 8,
           zIndex: 1001,
           background: "#ffffffdd",
           border: "1px solid #ccc",
