@@ -17,22 +17,22 @@ export default function AnimatedMarker({
   id,
   position,
   linea,
+  pasajeros,
   color,
   zoom,
   onClick,
-  opacity = 1
+  opacity = 1,
+  focused = false
 }) {
   const map = useMap();
   const markerRef = useRef(null);
   const imgRef = useRef(null);
+  const passengerRef = useRef(null);
   const prevState = useRef({ pos: position, bearing: 0 });
-  const lastZoomType = useRef(null); // track current visual mode
 
-  // Decide visual mode
-const zoomMode = zoom < 15 ? "dot" : "taxi";
+  const zoomMode = zoom < 15 ? "dot" : "taxi";
 
-
-  // 🛠️ (Re)Create marker icon on zoom mode change
+  // Crear marcador (solo una vez o si cambia zoomMode)
   useEffect(() => {
     if (markerRef.current) {
       markerRef.current.remove();
@@ -43,7 +43,6 @@ const zoomMode = zoom < 15 ? "dot" : "taxi";
     div.style.position = "relative";
 
     if (zoomMode === "dot") {
-      // 🔵 Círculo simple
       const circle = document.createElement("div");
       circle.style.cssText = `
         width: 14px;
@@ -57,7 +56,7 @@ const zoomMode = zoom < 15 ? "dot" : "taxi";
       `;
       div.appendChild(circle);
     } else {
-      // 🚕 Taxi con etiqueta de línea
+      // 🚕 Taxi + etiqueta
       const label = document.createElement("div");
       label.style.cssText = `
         position: absolute;
@@ -66,20 +65,41 @@ const zoomMode = zoom < 15 ? "dot" : "taxi";
         left: 50%;
         transform: translateX(-50%);
         background: ${color};
-        padding: 2px 6px;
+        padding: 4px 8px;
         border-radius: 6px;
         font: bold 12px sans-serif;
         white-space: nowrap;
         opacity: ${opacity};
+        transition: all 0.3s ease;
       `;
-      label.innerHTML = `${linea}`;
+
+      const lineText = document.createElement("div");
+      lineText.textContent = `${linea}`;
+      label.appendChild(lineText);
+
+      const passengerText = document.createElement("div");
+      passengerText.textContent = `Pasajeros: ${pasajeros ?? "?"}`;
+      passengerText.style.cssText = `
+        font-weight: normal;
+        font: bold 12px sans-serif;
+        max-height: 0;
+        overflow: hidden;
+        opacity: 0;
+        transition: max-height 0.3s ease, opacity 0.3s ease;
+      `;
+      label.appendChild(passengerText);
+      passengerRef.current = passengerText;
 
       const img = document.createElement("img");
       imgRef.current = img;
       img.src = ICON_TAXI;
       img.width = 36;
       img.height = 36;
-      img.style.opacity = opacity;
+      img.style.cssText = `
+        opacity: ${opacity};
+        transition: transform 0.3s ease;
+        transform: scale(${focused ? 1.4 : 1});
+      `;
 
       div.append(label, img);
     }
@@ -88,7 +108,7 @@ const zoomMode = zoom < 15 ? "dot" : "taxi";
       html: div,
       className: "",
       iconSize: zoomMode === "dot" ? [20, 20] : [60, 60],
-      iconAnchor: [10, 10] // center for dot, adjust for taxi if needed
+      iconAnchor: [10, 10]
     });
 
     const marker = L.marker(position, { icon });
@@ -99,14 +119,13 @@ const zoomMode = zoom < 15 ? "dot" : "taxi";
     });
 
     markerRef.current = marker;
-    lastZoomType.current = zoomMode;
 
     return () => {
       marker.remove();
     };
   }, [zoomMode, linea, color, opacity]);
 
-  // 🧭 Rotación + movimiento
+  // Movimiento y rotación
   useEffect(() => {
     if (!markerRef.current) return;
 
@@ -120,11 +139,11 @@ const zoomMode = zoom < 15 ? "dot" : "taxi";
 
     prevState.current = { pos: position, bearing };
 
-    // Solo rota si es taxi
+    // Rotación para taxi
     if (zoomMode === "taxi" && imgRef.current) {
       const rot = (bearing - 90 + 360) % 360;
       const flip = rot > 90 && rot < 270 ? "scaleY(-1)" : "scaleY(1)";
-      imgRef.current.style.transform = `rotate(${rot}deg) ${flip}`;
+      imgRef.current.style.transform = `rotate(${rot}deg) ${flip} scale(${focused ? 1.4 : 1})`;
     }
 
     // Movimiento suave
@@ -136,6 +155,21 @@ const zoomMode = zoom < 15 ? "dot" : "taxi";
       });
     }
   }, [position, zoomMode]);
+
+  // Animaciones por selección
+  useEffect(() => {
+    if (passengerRef.current) {
+      passengerRef.current.style.maxHeight = focused ? "40px" : "0";
+      passengerRef.current.style.opacity = focused ? "1" : "0";
+    }
+
+    if (imgRef.current && zoomMode === "taxi") {
+      const current = imgRef.current.style.transform || "";
+      const rot = current.match(/rotate\([^)]+\)/)?.[0] || "";
+      const flip = current.includes("scaleY(-1)") ? "scaleY(-1)" : "scaleY(1)";
+      imgRef.current.style.transform = `${rot} ${flip} scale(${focused ? 1.4 : 1})`.trim();
+    }
+  }, [focused, zoomMode]);
 
   return null;
 }
