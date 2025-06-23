@@ -17,9 +17,11 @@ import "leaflet/dist/leaflet.css";
 const API_URL = "https://api-coltrackapp.duckdns.org/api/telemetria/recientes";
 const copiapoCenter = [-27.377665428621032, -70.31697510051582];
 const copiapoBounds = [
-  [-27.476759948156687, -70.3671334115435],
-  [-27.340521822497408, -70.24654130397786]
+  [-27.5068, -70.3971], // suroeste: más al sur y más al oeste
+  [-27.3105, -70.2165]  // noreste: más al norte y más al este
 ];
+
+
 
 const userIcon = new L.Icon({
   iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png",
