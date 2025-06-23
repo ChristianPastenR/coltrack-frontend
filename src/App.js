@@ -103,7 +103,9 @@ export default function App() {
         const lines = [...new Set(dedupe.map(t => t.linea))].sort();
         setAvailableLines(lines);
         if (selectedLines.length === 0) setSelectedLines(lines);
-      } catch (err) {}
+      } catch (err) {
+        console.error("Error al obtener datos:", err);
+      }
     };
     fetchTelemetrias();
     const id = setInterval(fetchTelemetrias, 1500);
@@ -160,18 +162,15 @@ export default function App() {
       ({ coords }) => {
         const location = [coords.latitude, coords.longitude];
         setUserLocation(location);
+        if (mapRef) {
+          mapRef.flyTo(location, 15, { duration: 0.5 });
+        }
       },
       () => {
         alert("No se pudo obtener tu ubicación. Por favor, permite el acceso al GPS.");
       }
     );
   };
-
-  useEffect(() => {
-    if (userLocation && mapRef) {
-      mapRef.flyTo(userLocation, 15, { duration: 0.5 });
-    }
-  }, [userLocation, mapRef]);
 
   const dataFiltrada = telemetrias.filter(t => selectedLines.includes(t.linea));
 
@@ -225,6 +224,7 @@ export default function App() {
           </ul>
         </div>
       </div>
+
       <button
         onClick={() => {
           setGpsButtonActive(true);
@@ -268,6 +268,7 @@ export default function App() {
           <line x1="18" y1="12" x2="22" y2="12" />
         </svg>
       </button>
+
       <MapContainer
         center={copiapoCenter}
         zoom={15}
@@ -319,6 +320,7 @@ export default function App() {
           />
         ))}
       </MapContainer>
+
       <div style={{
         position: "fixed",
         bottom: 0,
@@ -337,4 +339,3 @@ export default function App() {
     </div>
   );
 }
-
