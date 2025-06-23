@@ -38,9 +38,7 @@ function MoveToLocation({ position }) {
     if (!position) return;
     const currentCenter = map.getCenter();
     const distance = map.distance(currentCenter, L.latLng(position));
-
     const safeZoom = Math.min(17, map.getMaxZoom());
-
     if (lastCenter.current === null || distance > 80) {
       map.flyTo(position, safeZoom, { duration: 0.5 });
     } else {
@@ -71,6 +69,7 @@ export default function App() {
   const [focusedVehicle, setFocusedVehicle] = useState(null);
   const [showLegend, setShowLegend] = useState(false);
   const [mapRef, setMapRef] = useState(null);
+  const [gpsButtonActive, setGpsButtonActive] = useState(false);
 
   const colorPalette = [
     "#FFCDD2", "#F8BBD0", "#E1BEE7", "#D1C4E9", "#C5CAE9",
@@ -104,9 +103,7 @@ export default function App() {
         const lines = [...new Set(dedupe.map(t => t.linea))].sort();
         setAvailableLines(lines);
         if (selectedLines.length === 0) setSelectedLines(lines);
-      } catch (err) {
-        console.error("Error obteniendo telemetrías:", err.message);
-      }
+      } catch (err) {}
     };
     fetchTelemetrias();
     const id = setInterval(fetchTelemetrias, 1500);
@@ -135,12 +132,10 @@ export default function App() {
     const adjustLeafletControls = () => {
       const zoomCtl = document.querySelector(".leaflet-control-zoom");
       const attrCtl = document.querySelector(".leaflet-control-attribution");
-
       if (zoomCtl) {
         zoomCtl.style.marginBottom = "35px";
         zoomCtl.style.marginRight = "10px";
       }
-
       if (attrCtl) {
         attrCtl.style.bottom = "0px";
         attrCtl.style.left = "0px";
@@ -150,45 +145,39 @@ export default function App() {
         attrCtl.style.fontSize = "11px";
       }
     };
-
     const observer = new MutationObserver(adjustLeafletControls);
     observer.observe(document.body, { childList: true, subtree: true });
     adjustLeafletControls();
-
     return () => observer.disconnect();
   }, []);
 
-  // ✅ Solicita ubicación y centra el mapa en el marcador del usuario
   const centerOnUser = () => {
     if (!navigator.geolocation) {
       alert("Tu navegador no soporta geolocalización.");
       return;
     }
-
     navigator.geolocation.getCurrentPosition(
       ({ coords }) => {
         const location = [coords.latitude, coords.longitude];
         setUserLocation(location);
-        if (mapRef) {
-          setTimeout(() => {
-            mapRef.flyTo(location, 15, { duration: 0.5 });
-          }, 100);
-        }
       },
-      (err) => {
-        console.warn("Acceso a GPS denegado o falló:", err.message);
+      () => {
         alert("No se pudo obtener tu ubicación. Por favor, permite el acceso al GPS.");
       }
     );
   };
+
+  useEffect(() => {
+    if (userLocation && mapRef) {
+      mapRef.flyTo(userLocation, 15, { duration: 0.5 });
+    }
+  }, [userLocation, mapRef]);
 
   const dataFiltrada = telemetrias.filter(t => selectedLines.includes(t.linea));
 
   return (
     <div style={{ width: "100vw", height: "100vh", position: "relative", overflow: "hidden" }}>
       {loading && <LoaderOverlay />}
-
-      {/* Panel: selector y leyenda */}
       <div style={{ position: "absolute", top: 10, left: 10, zIndex: 1001, width: "90vw", maxWidth: 500 }}>
         <SearchBarDropdown
           lines={availableLines.map(id => ({ id }))}
@@ -199,7 +188,6 @@ export default function App() {
             return acc;
           }, {})}
         />
-
         <button
           onClick={() => setShowLegend(p => !p)}
           style={{
@@ -214,7 +202,6 @@ export default function App() {
         >
           {showLegend ? "✕ Ocultar leyenda" : "☰ Mostrar leyenda"}
         </button>
-
         <div style={{
           background: "rgba(255,255,255,0.85)",
           padding: showLegend ? "10px" : "0 10px",
@@ -238,16 +225,18 @@ export default function App() {
           </ul>
         </div>
       </div>
-
-      {/* ✅ Botón GPS encima del control de zoom */}
       <button
-        onClick={centerOnUser}
+        onClick={() => {
+          setGpsButtonActive(true);
+          centerOnUser();
+          setTimeout(() => setGpsButtonActive(false), 1500);
+        }}
         style={{
           position: "absolute",
           bottom: 250,
           right: 7,
           zIndex: 1001,
-          background: "#ffffffdd",
+          background: gpsButtonActive ? "#ff9999" : "#ffffffdd",
           border: "1px solid #ccc",
           borderRadius: "50%",
           width: 40,
@@ -279,8 +268,6 @@ export default function App() {
           <line x1="18" y1="12" x2="22" y2="12" />
         </svg>
       </button>
-
-      {/* Mapa principal */}
       <MapContainer
         center={copiapoCenter}
         zoom={15}
@@ -295,7 +282,6 @@ export default function App() {
         whenCreated={(map) => {
           setMapRef(map);
           setZoom(Math.min(map.getZoom(), map.getMaxZoom()));
-
           map.on("zoomend", () => {
             const z = map.getZoom();
             if (z > map.getMaxZoom()) {
@@ -303,7 +289,6 @@ export default function App() {
             }
             setZoom(z);
           });
-
           map.on("click", () => setFocusedVehicle(null));
         }}
       >
@@ -334,8 +319,6 @@ export default function App() {
           />
         ))}
       </MapContainer>
-
-      {/* Footer */}
       <div style={{
         position: "fixed",
         bottom: 0,
@@ -354,3 +337,4 @@ export default function App() {
     </div>
   );
 }
+
