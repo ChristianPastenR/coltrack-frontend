@@ -17,7 +17,7 @@ import "leaflet/dist/leaflet.css";
 import "./App.css";
 
 /* ------------------------------------------------------------------ */
-/* 1)  CONFIGURACIÓN DEL ÍCONO DE USUARIO                              */
+/* 1)  ÍCONO DEL USUARIO                                              */
 /* ------------------------------------------------------------------ */
 const userMarker = L.divIcon({
   className: "custom-user-marker",
@@ -31,9 +31,9 @@ const userMarker = L.divIcon({
 });
 
 /* ------------------------------------------------------------------ */
-/* 2)  CONSTANTES BÁSICAS                                             */
+/* 2)  CONSTANTES DE MAPA                                             */
 /* ------------------------------------------------------------------ */
-const API_URL = "https://api-coltrackapp.duckdns.org/api/telemetria/recientes";
+const API_URL      = "https://api-coltrackapp.duckdns.org/api/telemetria/recientes";
 const copiapoCenter = [-27.377665428621032, -70.31697510051582];
 const copiapoBounds = [
   [-27.5068, -70.3971],
@@ -41,37 +41,57 @@ const copiapoBounds = [
 ];
 
 /* ------------------------------------------------------------------ */
-/* 3)  PALETA DE COLORES Y PERSISTENCIA                               */
+/* 3)  PALETA FIJA SIN PERSISTENCIA                                   */
 /* ------------------------------------------------------------------ */
+/* Paleta de 20 tonos vivos y saturados (sin amarillos ni blancos) */
+/* 20 colores vivos – los 10 primeros cubren el espectro con máxima diferencia */
 const colorPalette = [
-  "#FFB3BA", "#FFDFBA", "#FFFFBA", "#BAFFC9", "#BAE1FF",
-  "#E0BBE4", "#D5E8D4", "#C8E6FF", "#FFE7CC", "#F6C1C1",
-  "#FAD6A5", "#FFF8B5", "#B0EACD", "#B8DAFF", "#D0C4E4",
-  "#D9EAD3", "#E3F2FD", "#FFF2CC", "#C2ECE6", "#F5E6CC"
+  "#E53935", // rojo
+  "#1E88E5", // azul
+  "#43A047", // verde
+  "#FB8C00", // naranja
+  "#8E24AA", // púrpura
+  "#009688", // teal
+  "#C2185B", // rosa frambuesa
+  "#00ACC1", // cian
+  "#7C4DFF", // violeta eléctrico
+  "#F4511E", // naranja rojizo
+  "#66BB6A", // verde lima
+  "#3949AB", // índigo
+  "#26C6DA", // turquesa claro
+  "#BF360C", // terracota vivo
+  "#AB47BC", // lavanda saturada
+  "#00C853", // verde neón
+  "#EF5350", // rojo coral
+  "#3F51B5", // azul violáceo
+  "#4CAF50", // verde medio
+  "#D81B60"  // fucsia intenso
 ];
 
-const COLOR_MAP_KEY = "coltrack_lineColorMap";
-const loadColorMap = () => {
-  try { return JSON.parse(localStorage.getItem(COLOR_MAP_KEY)) || {}; }
-  catch { return {}; }
-};
-const saveColorMap = (map) =>
-  localStorage.setItem(COLOR_MAP_KEY, JSON.stringify(map));
+
+
+/* hash determinista sencillo */
+const hashString = (str) =>
+  str.split("").reduce((a, c) => ((a << 5) - a) + c.charCodeAt(0), 0) >>> 0;
+
+/* mismo color para la misma línea en cualquier dispositivo */
+const getLineColor = (linea) =>
+  colorPalette[hashString(String(linea)) % colorPalette.length];
 
 /* ------------------------------------------------------------------ */
 /* 4)  COMPONENTES AUXILIARES                                         */
 /* ------------------------------------------------------------------ */
 function MoveToLocation({ position }) {
-  const map = useMap();
+  const map        = useMap();
   const lastCenter = useRef(null);
 
   useEffect(() => {
     if (!position) return;
     const currentCenter = map.getCenter();
-    const distance = map.distance(currentCenter, L.latLng(position));
+    const dist = map.distance(currentCenter, L.latLng(position));
     const safeZoom = Math.min(17, map.getMaxZoom());
 
-    if (lastCenter.current === null || distance > 80) {
+    if (lastCenter.current == null || dist > 80) {
       map.flyTo(position, safeZoom, { duration: 0.5 });
     } else {
       map.panTo(position, { animate: true, duration: 0.5 });
@@ -83,19 +103,15 @@ function MoveToLocation({ position }) {
 }
 
 function ZoomLogger({ onZoomChange }) {
-  useMapEvents({
-    zoomend(e) {
-      onZoomChange?.(e.target.getZoom());
-    }
-  });
+  useMapEvents({ zoomend: (e) => onZoomChange?.(e.target.getZoom()) });
   return null;
 }
 
 /* ------------------------------------------------------------------ */
-/* 5)  APP                                                             */
+/* 5)  APP                                                            */
 /* ------------------------------------------------------------------ */
 export default function App() {
-  /* ----------------------------- estado ---------------------------- */
+  /* estado principal */
   const [loading, setLoading]             = useState(true);
   const [telemetrias, setTelemetrias]     = useState([]);
   const [geojsonRutas, setGeojsonRutas]   = useState([]);
@@ -108,27 +124,20 @@ export default function App() {
   const [selectedLines, setSelectedLines]   = useState([]);
   const [focusedVehicle, setFocusedVehicle] = useState(null);
   const [showLegend, setShowLegend]       = useState(false);
-  const [rutaResumen, setRutaResumen]     = useState({});   // ← nuevo
+  const [rutaResumen, setRutaResumen]     = useState({});
 
-  /* ---------- refs ---------- */
-  const colorMapRef   = useRef(loadColorMap());
-  const usedColorsRef = useRef(new Set(Object.values(colorMapRef.current)));
-  const firstLoadRef  = useRef(true);
-
-  const getLineColor = (linea) => colorMapRef.current[linea] || "#000000";
+  /* una sola selección completa al primer fetch */
+  const firstLoadRef = useRef(true);
 
   /* ------------------------------------------------------------------
-   *  5.1  FETCH TELEMETRÍAS
+   * 5.1  TELEMETRÍAS
    * ------------------------------------------------------------------ */
   useEffect(() => {
     const fetchTelemetrias = async () => {
       try {
-        const res = await fetch(API_URL);
+        const res   = await fetch(API_URL);
         const { data = [] } = await res.json();
-
-        const unique = Array.from(
-          new Map(data.map(t => [t.patente, t])).values()
-        );
+        const unique = Array.from(new Map(data.map(t => [t.patente, t])).values());
         setTelemetrias(unique);
 
         const lines = [...new Set(unique.map(t => t.linea))].sort();
@@ -138,20 +147,6 @@ export default function App() {
           setSelectedLines(lines);
           firstLoadRef.current = false;
         }
-
-        const map  = colorMapRef.current;
-        const used = usedColorsRef.current;
-        let changed = false;
-
-        lines.forEach(linea => {
-          if (!map[linea]) {
-            const color = colorPalette.find(c => !used.has(c)) || "#000000";
-            map[linea]  = color;
-            used.add(color);
-            changed = true;
-          }
-        });
-        if (changed) saveColorMap(map);
       } catch (err) {
         console.error("❌ Error al obtener telemetrías:", err);
       }
@@ -163,7 +158,7 @@ export default function App() {
   }, []);
 
   /* ------------------------------------------------------------------
-   *  5.2  GEOJSON RUTAS + RESUMEN DE RECORRIDOS
+   * 5.2  GEOJSON RUTAS + RESUMEN
    * ------------------------------------------------------------------ */
   useEffect(() => {
     const loadData = async () => {
@@ -174,6 +169,8 @@ export default function App() {
         ]);
 
         setGeojsonRutas(geo.features || []);
+
+        /* clave igual a “Línea X” para coincidir con telemetría */
         setRutaResumen(Object.fromEntries(
           resumen.map(o => [`Línea ${o.linea}`, o.descripcion])
         ));
@@ -185,15 +182,15 @@ export default function App() {
   }, []);
 
   /* ------------------------------------------------------------------
-   *  5.3  LOADER (estético)
+   * 5.3  LOADER (estético)
    * ------------------------------------------------------------------ */
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 2000);
-    return () => clearTimeout(timer);
+    const t = setTimeout(() => setLoading(false), 2000);
+    return () => clearTimeout(t);
   }, []);
 
   /* ------------------------------------------------------------------
-   *  5.4  CENTRAR EN USUARIO
+   * 5.4  CENTRO EN USUARIO
    * ------------------------------------------------------------------ */
   const centerOnUser = () => {
     if (!navigator.geolocation) {
@@ -216,49 +213,36 @@ export default function App() {
 
   useEffect(() => {
     if (focusedUser) {
-      const t = setTimeout(() => {
-        setFocusedUser(false);
-        setIsLocating(false);
-      }, 1000);
-      return () => clearTimeout(t);
+      const to = setTimeout(() => { setFocusedUser(false); setIsLocating(false); }, 1000);
+      return () => clearTimeout(to);
     }
   }, [focusedUser]);
 
   /* ------------------------------------------------------------------
-   *  5.5  DATA FILTRADA Y FOCO
+   * 5.5  FILTRADO + LIMPIEZA DE FOCO
    * ------------------------------------------------------------------ */
-  const dataFiltrada = telemetrias.filter(t =>
-    selectedLines.includes(t.linea)
-  );
+  const dataFiltrada = telemetrias.filter(t => selectedLines.includes(t.linea));
 
   useEffect(() => {
     if (!focusedVehicle) return;
     const v = telemetrias.find(t => t.patente === focusedVehicle);
-    if (!v || !selectedLines.includes(v.linea)) {
-      setFocusedVehicle(null);
-    }
+    if (!v || !selectedLines.includes(v.linea)) setFocusedVehicle(null);
   }, [selectedLines, telemetrias, focusedVehicle]);
 
   /* ------------------------------------------------------------------
-   *  5.6  RENDER
+   * 5.6  RENDER
    * ------------------------------------------------------------------ */
   return (
     <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
       {loading && <LoaderOverlay />}
 
-      {/* -------- Búsqueda + leyenda -------- */}
+      {/* Búsqueda + leyenda */}
       <div style={{ position: "absolute", top: 10, left: 10, zIndex: 1001, width: "90vw", maxWidth: 500 }}>
         <SearchBarDropdown
-          lines={availableLines.map(id => ({
-            id,
-            desc: rutaResumen[id] || ""
-          }))}
+          lines={availableLines.map(id => ({ id, desc: rutaResumen[id] || "" }))}
           selectedLines={selectedLines}
           onSelectionChange={setSelectedLines}
-          lineColors={availableLines.reduce((acc, id) => {
-            acc[id] = getLineColor(id);
-            return acc;
-          }, {})}
+          lineColors={availableLines.reduce((o, id) => ({ ...o, [id]: getLineColor(id) }), {})}
         />
 
         <button
@@ -300,7 +284,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* -------- Botón GPS -------- */}
+      {/* Botón GPS */}
       <button
         onClick={centerOnUser}
         className={`gps-button ${isLocating ? "gps-button--active" : ""}`}
@@ -315,9 +299,7 @@ export default function App() {
         </svg>
       </button>
 
-      {/* ================================================================ */}
-      {/* MAPA                                                            */}
-      {/* ================================================================ */}
+      {/* Mapa */}
       <MapContainer
         center={copiapoCenter}
         zoom={17}
@@ -334,22 +316,18 @@ export default function App() {
         }}
       >
         <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-      />
-
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
 
         <ZoomLogger onZoomChange={setZoom} />
         <ZoomControl position="bottomright" />
 
-        {/* ----- RUTAS ----- */}
+        {/* Rutas */}
         {geojsonRutas.map((f, idx) => {
-          const linea = f.properties.linea;
-          const focusedData = focusedVehicle
-            ? telemetrias.find(t => t.patente === focusedVehicle)
-            : null;
-
-          const isFocused  = focusedData?.linea === linea;
+          const linea      = f.properties.linea;
+          const focalData  = focusedVehicle && telemetrias.find(t => t.patente === focusedVehicle);
+          const isFocused  = focalData?.linea === linea;
           const isSelected = selectedLines.includes(linea);
           if (focusedVehicle && !isFocused) return null;
 
@@ -367,20 +345,20 @@ export default function App() {
           );
         })}
 
-        {/* ----- Usuario ----- */}
+        {/* Usuario */}
         {userLocation && <Marker position={userLocation} icon={userMarker} />}
         {userLocation && focusedUser && (
           <MoveToLocation key={userCenterTrigger} position={userLocation} />
         )}
 
-        {/* ----- Movimiento al vehículo enfocado ----- */}
+        {/* Movimiento al vehículo enfocado */}
         {focusedVehicle && (
           <MoveToLocation
             position={telemetrias.find(t => t.patente === focusedVehicle)?.gps || null}
           />
         )}
 
-        {/* ----- Vehículos ----- */}
+        {/* Vehículos */}
         {dataFiltrada.map(t => (
           <AnimatedMarker
             key={t.patente}
@@ -397,7 +375,7 @@ export default function App() {
         ))}
       </MapContainer>
 
-      {/* -------- Pie -------- */}
+      {/* Pie */}
       <div style={{
         position: "fixed",
         bottom: 0,
