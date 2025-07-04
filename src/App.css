@@ -93,34 +93,52 @@ html, body, #root {
   100% { transform: rotate(360deg); }
 }
 
+/* ---------- Botón “Mi ubicación” estilo Google Maps ---------- */
 .gps-button {
   position: absolute;
-  bottom: 250px;
+  bottom: 250px;         /* ← mismo lugar que tenías antes */
   right: 7px;
   z-index: 1001;
-  background-color: #ffffff;
-  border: 1px solid #ccc;
-  border-radius: 50%;
+
   width: 40px;
   height: 40px;
-  cursor: pointer;
+  border-radius: 50%;
+  border: 1px solid #d1d1d1;
+  background: #fff;
+
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
-  padding: 0;
-  transition: background-color 0.3s;
+  cursor: pointer;
+
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .3);
+  transition: box-shadow .2s ease, background .2s ease;
 }
 
-.gps-blink {
-  animation: blink-blue-bg 1s infinite;
+.gps-button:hover {
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .4);
 }
 
-@keyframes blink-blue-bg {
-  0%   { background-color: #0095ff; }
-  50%  { background-color: #ffffff; }
-  100% { background-color: #0095ff; }
+.gps-button svg {
+  pointer-events: none;
+  color: #616161;
 }
+
+.gps-button--active {
+  animation: gps-pulse 1.5s infinite;
+}
+
+.gps-button--active svg {
+  color: #1a73e8;
+}
+
+@keyframes gps-pulse {
+  0%   { box-shadow: 0 0 0 0   rgba(26,115,232,0.4); }
+  70%  { box-shadow: 0 0 0 10px rgba(26,115,232,0);  }
+  100% { box-shadow: 0 0 0 0   rgba(26,115,232,0);  }
+}
+
+
 
 
 
