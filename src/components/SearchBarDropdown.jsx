@@ -1,41 +1,37 @@
 import React, { useState, useEffect, useRef } from "react";
 
 export default function SearchBarDropdown({
-  lines = [],
+  lines = [],            // [{ id: "Línea 1", desc: "Paipote …" }]
   onSelectionChange,
   lineColors = {}
 }) {
-  const [selected, setSelected] = useState([]);
-  const [filter, setFilter] = useState("");
-  const [isOpen, setIsOpen] = useState(false);
-  const containerRef = useRef(null);
-  const dropdownRef = useRef(null);
+  const [selected, setSelected]   = useState([]);
+  const [filter, setFilter]       = useState("");
+  const [isOpen, setIsOpen]       = useState(false);
+  const containerRef              = useRef(null);
+  const dropdownRef               = useRef(null);
   const [dropdownWidth, setDropdownWidth] = useState("100%");
-  const initializedRef = useRef(false);
+  const initializedRef            = useRef(false);
 
-  // Inicializa todas las líneas como seleccionadas solo una vez
+  /* -------- inicializa todas seleccionadas una sola vez -------- */
   useEffect(() => {
     if (!initializedRef.current && lines.length > 0) {
-      const allIds = lines.map(l => l.id);
-      setSelected(allIds);
+      setSelected(lines.map(l => l.id));
       initializedRef.current = true;
     }
   }, [lines]);
 
-  // Comunica los cambios al componente padre
-  useEffect(() => {
-    onSelectionChange?.(selected);
-  }, [selected]);
+  /* -------- comunica selección al padre -------- */
+  useEffect(() => { onSelectionChange?.(selected); }, [selected]);
 
-  // Ancho dinámico del dropdown
+  /* -------- ancho dinámico del popup -------- */
   useEffect(() => {
     if (containerRef.current) {
-      const width = containerRef.current.getBoundingClientRect().width;
-      setDropdownWidth(width);
+      setDropdownWidth(containerRef.current.getBoundingClientRect().width);
     }
   }, [isOpen]);
 
-  // Cierra el dropdown si se hace clic fuera
+  /* -------- cierra al hacer clic fuera -------- */
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (
@@ -51,42 +47,50 @@ export default function SearchBarDropdown({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const toggleLine = (id) => {
+  /* ---------------- helpers ---------------- */
+  const toggleLine = (id) =>
     setSelected(prev =>
       prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
     );
-  };
 
-  const handleToggleAll = () => {
-    const allIds = lines.map(l => l.id);
-    setSelected(selected.length === allIds.length ? [] : allIds);
-  };
+  const handleToggleAll = () =>
+    setSelected(selected.length === lines.length ? [] : lines.map(l => l.id));
 
-  const filtered = lines.filter(l =>
-    l.id.toLowerCase().includes(filter.toLowerCase())
+  /* ---------- FILTRO con normalización ---------- */
+  const normalize = (str) =>
+    str
+      .toLowerCase()
+      .replace(/línea\s*/g, "")   // quita la palabra “línea”
+      .replace(/\s+/g, " ");      // colapsa espacios
+
+  const filterLC = filter.toLowerCase();
+  const filtered = lines.filter(
+    (l) =>
+      normalize(l.id).includes(filterLC) ||
+      normalize(l.desc).includes(filterLC)
   );
 
+  /* ---------------- render ---------------- */
   return (
-    <div ref={containerRef} style={{
-      backgroundColor: "rgba(255, 255, 255, 0.85)",
-      backdropFilter: "blur(8px)",
-      WebkitBackdropFilter: "blur(8px)",
-      padding: 12,
-      borderRadius: 8,
-      width: "100%",
-      boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
-      position: "relative"
-    }}>
-
+    <div
+      ref={containerRef}
+      style={{
+        backgroundColor: "rgba(255, 255, 255, 0.85)",
+        backdropFilter: "blur(8px)",
+        WebkitBackdropFilter: "blur(8px)",
+        padding: 12,
+        borderRadius: 8,
+        width: "100%",
+        boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
+        position: "relative"
+      }}
+    >
       <input
         type="text"
         value={filter}
-        onChange={(e) => {
-          setFilter(e.target.value);
-          setIsOpen(true);
-        }}
+        onChange={(e) => { setFilter(e.target.value); setIsOpen(true); }}
         onFocus={() => setIsOpen(true)}
-        placeholder="Buscar línea..."
+        placeholder="Buscar línea o sector..."
         style={{
           width: "95%",
           padding: 8,
@@ -116,24 +120,23 @@ export default function SearchBarDropdown({
             left: 0
           }}
         >
-
-          <li style={{
-            position: "sticky",
-            top: 0,
-            backgroundColor: "#f5f5f5",
-            padding: "8px 12px",
-            fontWeight: "bold",
-            borderBottom: "1px solid #ddd",
-            zIndex: 1
-          }}>
+          {/* Encabezado */}
+          <li
+            style={{
+              position: "sticky",
+              top: 0,
+              backgroundColor: "#f5f5f5",
+              padding: "8px 12px",
+              fontWeight: "bold",
+              borderBottom: "1px solid #ddd",
+              zIndex: 1
+            }}
+          >
             Copiapó
           </li>
 
-          <li style={{
-            padding: 8,
-            display: "flex",
-            alignItems: "center"
-          }}>
+          {/* Checkbox “Seleccionar todas” */}
+          <li style={{ padding: 8, display: "flex", alignItems: "center" }}>
             <input
               type="checkbox"
               checked={selected.length === lines.length}
@@ -147,6 +150,7 @@ export default function SearchBarDropdown({
             </label>
           </li>
 
+          {/* Lista de líneas filtradas */}
           {filtered.length > 0 ? (
             filtered.map((line) => (
               <li
@@ -173,7 +177,7 @@ export default function SearchBarDropdown({
                   }}
                   onClick={() => toggleLine(line.id)}
                 >
-                  {line.id}
+                  {line.id} — {line.desc}
                 </label>
               </li>
             ))

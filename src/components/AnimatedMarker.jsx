@@ -1,3 +1,4 @@
+// src/components/AnimatedMarker.jsx
 import { useEffect, useRef } from "react";
 import { useMap } from "react-leaflet";
 import L from "leaflet";
@@ -6,10 +7,9 @@ import { getBearing, getDistanceMeters } from "../utils/geoUtils";
 
 const ICON_TAXI = "/img/taxi-right.png";
 
+/** Devuelve el ángulo siguiente manteniendo la menor diferencia posible (−180‥180) */
 function normalizeBearing(prev, next) {
-  let delta = next - prev;
-  if (delta > 180) delta -= 360;
-  if (delta < -180) delta += 360;
+  const delta = ((next - prev + 540) % 360) - 180; // -180 ≤ delta < 180
   return (prev + delta + 360) % 360;
 }
 
@@ -25,26 +25,36 @@ export default function AnimatedMarker({
   focused = false
 }) {
   const map = useMap();
+
+  // Refs para Leaflet y para los nodos DOM internos
   const markerRef = useRef(null);
   const imgRef = useRef(null);
   const wrapperRef = useRef(null);
   const labelTextRef = useRef(null);
+
+  // Estado previo (para bearing) guardado en un ref
   const prevState = useRef({ pos: position, bearing: 0 });
+
+  // Modo de visualización según zoom
+  const zoomMode = zoom < 14 ? "dot" : "taxi";
   const prevZoomMode = useRef(null);
 
-  const zoomMode = zoom < 14 ? "dot" : "taxi";
-
+  /* -----------------------------------------------------------------------
+   * 1) CREACIÓN / DESTRUCCIÓN DEL MARKER
+   *    Solo depende de zoomMode (y del map/id estáticos).
+   * --------------------------------------------------------------------- */
   useEffect(() => {
-    const shouldRecreate = zoomMode !== prevZoomMode.current || !markerRef.current;
-    if (!shouldRecreate) return;
-
+    // -- Limpieza previa (si ya hay marker)
     if (markerRef.current) {
+      markerRef.current.stop?.();
+      markerRef.current.off();
       markerRef.current.remove();
       markerRef.current = null;
     }
 
-    const div = document.createElement("div");
-    div.style.position = "relative";
+    /* --------- DOM IMPERATIVO --------- */
+    const root = document.createElement("div");
+    root.style.position = "relative";
 
     const wrapper = document.createElement("div");
     wrapper.style.cssText = `
@@ -57,6 +67,7 @@ export default function AnimatedMarker({
     wrapperRef.current = wrapper;
 
     if (zoomMode === "dot") {
+      // ── Círculo simple
       const circle = document.createElement("div");
       circle.style.cssText = `
         width: 14px;
@@ -68,8 +79,10 @@ export default function AnimatedMarker({
         box-shadow: 0 0 6px rgba(0,0,0,0.4);
         transform: translate(-50%, -50%);
       `;
-      div.appendChild(circle);
+      root.appendChild(circle);
     } else {
+      /* --------- Versión 'taxi' --------- */
+      // Etiqueta
       const label = document.createElement("div");
       label.style.cssText = `
         background: ${color};
@@ -84,41 +97,40 @@ export default function AnimatedMarker({
       const labelText = document.createElement("div");
       labelTextRef.current = labelText;
 
-      const validPasajeros = typeof pasajeros === "number" && !isNaN(pasajeros);
-      labelText.textContent = focused && validPasajeros ? `👤 ${pasajeros}` : `${linea}`;
+      const validPax = typeof pasajeros === "number" && !isNaN(pasajeros);
+      labelText.textContent =
+        focused && validPax ? `👤 ${pasajeros}` : `${linea}`;
+
       labelText.style.cssText = `
-        font: ${focused && validPasajeros ? "bold 14px" : "normal 11px"} sans-serif;
+        font: ${focused && validPax ? "bold 14px" : "normal 11px"} sans-serif;
         color: black;
         text-align: center;
         opacity: 0;
         transform: translateY(6px);
         transition: opacity 0.3s ease, transform 0.3s ease;
       `;
-
       requestAnimationFrame(() => {
         labelText.style.opacity = "1";
         labelText.style.transform = "translateY(0)";
       });
-
       label.appendChild(labelText);
 
+      // Icono vehículo
       const img = document.createElement("img");
       imgRef.current = img;
       img.src = ICON_TAXI;
       img.width = 36;
       img.height = 36;
-      img.style.cssText = `
-        opacity: ${opacity};
-        transition: transform 0.3s ease;
-      `;
+      img.style.cssText = `opacity: ${opacity}; transition: transform 0.3s ease;`;
 
       wrapper.appendChild(label);
       wrapper.appendChild(img);
-      div.appendChild(wrapper);
+      root.appendChild(wrapper);
     }
 
+    /* -------- Icon & Marker Leaflet -------- */
     const icon = L.divIcon({
-      html: div,
+      html: root,
       className: "",
       iconSize: zoomMode === "dot" ? [20, 20] : [60, 60],
       iconAnchor: zoomMode === "dot" ? [10, 10] : [30, 55]
@@ -128,13 +140,26 @@ export default function AnimatedMarker({
     marker.addTo(map);
     marker.on("click", (e) => {
       e.originalEvent.stopPropagation();
-      if (onClick) onClick(id);
+      onClick?.(id);
     });
 
     markerRef.current = marker;
     prevZoomMode.current = zoomMode;
-  }, [zoomMode, linea, color, opacity, focused, id, onClick, pasajeros]);
 
+    /* -------- CLEAN-UP (cuando efecto se vuelva a ejecutar o unmount) ---- */
+    return () => {
+      if (markerRef.current) {
+        markerRef.current.stop?.();
+        markerRef.current.off();
+        markerRef.current.remove();
+        markerRef.current = null;
+      }
+    };
+  }, [map, id, zoomMode]); // ⚠️ SÓLO cambia cuando cambia el modo
+
+  /* -----------------------------------------------------------------------
+   * 2) ACTUALIZACIÓN DE POSICIÓN & ROTACIÓN
+   * --------------------------------------------------------------------- */
   useEffect(() => {
     if (!markerRef.current) return;
 
@@ -145,25 +170,29 @@ export default function AnimatedMarker({
     if (distance > 1.5) {
       bearing = normalizeBearing(prevBearing, getBearing(prevPos, position));
     }
-
     prevState.current = { pos: position, bearing };
 
+    // Gira el wrapper y voltea la imagen si es modo taxi
     if (zoomMode === "taxi" && wrapperRef.current && imgRef.current) {
       const angle = (bearing - 90 + 360) % 360;
       wrapperRef.current.style.transform = `rotate(${angle}deg)`;
 
       const flip = angle > 90 && angle < 270;
       imgRef.current.style.transform = flip ? "scaleY(-1)" : "scaleY(1)";
-      wrapperRef.current.style.flexDirection = flip ? "column-reverse" : "column";
+      wrapperRef.current.style.flexDirection = flip
+        ? "column-reverse"
+        : "column";
 
       const label = wrapperRef.current.firstChild;
-      if (label) {
-        label.style.transform = flip ? "rotate(180deg)" : "rotate(0deg)";
-      }
+      if (label) label.style.transform = flip ? "rotate(180deg)" : "rotate(0)";
     }
 
+    // Mueve suavemente si cambió la coordenada
     const cur = markerRef.current.getLatLng();
-    if (Math.abs(cur.lat - position[0]) > 0.00001 || Math.abs(cur.lng - position[1]) > 0.00001) {
+    if (
+      Math.abs(cur.lat - position[0]) > 0.00001 ||
+      Math.abs(cur.lng - position[1]) > 0.00001
+    ) {
       markerRef.current.slideTo(position, {
         duration: 2000,
         easing: "easeInOutSine"
@@ -171,24 +200,31 @@ export default function AnimatedMarker({
     }
   }, [position, zoomMode]);
 
-  // 🔁 Actualiza dinámicamente el texto del label
+  /* -----------------------------------------------------------------------
+   * 3) ACTUALIZA TEXTO DEL LABEL (línea / pasajeros)
+   * --------------------------------------------------------------------- */
   useEffect(() => {
     if (!labelTextRef.current) return;
-    const validPasajeros = typeof pasajeros === "number" && !isNaN(pasajeros);
-    labelTextRef.current.textContent = focused && validPasajeros ? `👤 ${pasajeros}` : `${linea}`;
+    const validPax = typeof pasajeros === "number" && !isNaN(pasajeros);
+    labelTextRef.current.textContent =
+      focused && validPax ? `👤 ${pasajeros}` : `${linea}`;
   }, [pasajeros, focused, linea]);
 
-  // 🔁 Actualiza opacidad del ícono y el texto al hacer foco
+  /* -----------------------------------------------------------------------
+   * 4) ACTUALIZA OPACITY
+   * --------------------------------------------------------------------- */
   useEffect(() => {
     if (zoomMode === "taxi") {
-      if (imgRef.current) imgRef.current.style.opacity = opacity;
+      imgRef.current && (imgRef.current.style.opacity = opacity);
       const label = wrapperRef.current?.querySelector("div");
-      if (label) label.style.opacity = opacity;
+      label && (label.style.opacity = opacity);
     } else {
+      // modo 'dot'
       const circle = markerRef.current?.getElement()?.firstChild;
-      if (circle) circle.style.opacity = opacity;
+      circle && (circle.style.opacity = opacity);
     }
   }, [opacity, zoomMode]);
 
+  // Nada que renderizar en JSX
   return null;
 }

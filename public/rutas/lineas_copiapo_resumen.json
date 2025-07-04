@@ -1,0 +1,30 @@
+[
+  {
+    "linea": "1",
+    "descripcion": "Paipote - Av. Los Carrera - Centro - Cancha Rayada - Universidad de Atacama"
+  },
+  {
+    "linea": "2",
+    "descripcion": "El Chañar - Luis Flores - Copayapu - Hospital - Centro"
+  },
+  {
+    "linea": "3",
+    "descripcion": "Sin recorrido urbano vigente"
+  },
+  {
+    "linea": "4",
+    "descripcion": "Centro - Ramón Freire - Copayapu - Villa Los Loros - Pedro Lagos"
+  },
+  {
+    "linea": "5",
+    "descripcion": "Terminal Paipote - Colo Colo - Circunvalación - Los Carrera - Centro"
+  },
+  {
+    "linea": "6",
+    "descripcion": "Centro - Hospital - Av. Bernardo O'Higgins - Los Aromos - Pobl. Pedro P. Figueroa"
+  },
+  {
+    "linea": "7",
+    "descripcion": "Centro - José J. Vallejos - Henríquez - Colo Colo - Grumete Venancio Díaz - Terminal Paipote"
+  }
+]
